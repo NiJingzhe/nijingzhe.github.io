@@ -1,0 +1,173 @@
+@import "tailwindcss";
+
+:root {
+  font-family: 'Courier New', 'Monaco', 'Menlo', monospace;
+  font-size: 19.2px; /* 16px * 1.2 = 19.2px */
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: dark;
+  color: rgba(255, 255, 255, 0.87);
+  background-color: #000000;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-width: 100vw;
+  min-height: 100vh;
+  overflow: hidden;
+  background: #000000;
+}
+
+#root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Custom Scrollbar */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(236, 72, 153, 0.6) rgba(17, 24, 39, 0.9);
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: rgba(17, 24, 39, 0.9);
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: rgba(236, 72, 153, 0.6);
+  border-radius: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(236, 72, 153, 0.8);
+}
+
+/* CRT Scanline Animation */
+@keyframes scanline {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(100vh);
+  }
+}
+
+/* Glitch Effect */
+@keyframes glitch {
+  0%, 100% {
+    text-shadow: 0 0 5px rgba(236, 72, 153, 0.5);
+  }
+  25% {
+    text-shadow: -2px 0 5px rgba(6, 182, 212, 0.5), 2px 0 5px rgba(236, 72, 153, 0.5);
+  }
+  50% {
+    text-shadow: 2px 0 5px rgba(6, 182, 212, 0.5), -2px 0 5px rgba(236, 72, 153, 0.5);
+  }
+  75% {
+    text-shadow: -2px 0 5px rgba(236, 72, 153, 0.5), 2px 0 5px rgba(6, 182, 212, 0.5);
+  }
+}
+
+/* Selection */
+::selection {
+  background-color: rgba(236, 72, 153, 0.5);
+  color: white;
+}
+
+::-moz-selection {
+  background-color: rgba(236, 72, 153, 0.5);
+  color: white;
+}
+
+/* Text Glow Effects - 根据文本颜色自动发光 */
+.text-glow-cyan {
+  text-shadow: 0 0 10px rgba(34, 211, 238, 0.9), 0 0 20px rgba(34, 211, 238, 0.7), 0 0 30px rgba(34, 211, 238, 0.5);
+}
+
+.text-glow-pink {
+  text-shadow: 0 0 10px rgba(236, 72, 153, 0.9), 0 0 20px rgba(236, 72, 153, 0.7), 0 0 30px rgba(236, 72, 153, 0.5);
+}
+
+.text-glow-emerald {
+  text-shadow: 0 0 10px rgba(16, 185, 129, 0.9), 0 0 20px rgba(16, 185, 129, 0.7), 0 0 30px rgba(16, 185, 129, 0.5);
+}
+
+.text-glow-amber {
+  text-shadow: 0 0 10px rgba(251, 191, 36, 0.9), 0 0 20px rgba(251, 191, 36, 0.7), 0 0 30px rgba(251, 191, 36, 0.5);
+}
+
+.text-glow-purple {
+  text-shadow: 0 0 10px rgba(168, 85, 247, 0.9), 0 0 20px rgba(168, 85, 247, 0.7), 0 0 30px rgba(168, 85, 247, 0.5);
+}
+
+.text-glow-green {
+  text-shadow: 0 0 10px rgba(74, 222, 128, 0.9), 0 0 20px rgba(74, 222, 128, 0.7), 0 0 30px rgba(74, 222, 128, 0.5);
+}
+
+.text-glow-red {
+  text-shadow: 0 0 10px rgba(248, 113, 113, 0.9), 0 0 20px rgba(248, 113, 113, 0.7), 0 0 30px rgba(248, 113, 113, 0.5);
+}
+
+.text-glow-white {
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.8), 0 0 20px rgba(255, 255, 255, 0.6), 0 0 30px rgba(255, 255, 255, 0.4);
+}
+
+/* 通用文本发光 - 使用当前颜色 */
+.text-glow {
+  text-shadow: 0 0 10px currentColor, 0 0 20px currentColor, 0 0 30px currentColor;
+}
+
+/* CRT 纹理效果 - 通用类 */
+.crt-overlay {
+  background: 
+    linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%),
+    linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  background-size: 100% 4px, 3px 100%;
+  pointer-events: none;
+}
+
+/* 方形滑动条拖动手柄 */
+.range-square-thumb::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: #00ffff;
+  border: 2px solid #00ffff;
+  cursor: pointer;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 1), 0 0 30px rgba(0, 255, 255, 0.8), 0 0 45px rgba(0, 255, 255, 0.5), inset 0 0 5px rgba(0, 255, 255, 1);
+  clip-path: polygon(2px 0, calc(100% - 2px) 0, 100% 2px, 100% calc(100% - 2px), calc(100% - 2px) 100%, 2px 100%, 0 calc(100% - 2px), 0 2px);
+}
+
+.range-square-thumb::-webkit-slider-thumb:hover {
+  box-shadow: 0 0 20px rgba(0, 255, 255, 1), 0 0 40px rgba(0, 255, 255, 1), 0 0 60px rgba(0, 255, 255, 0.8), inset 0 0 8px rgba(0, 255, 255, 1);
+}
+
+.range-square-thumb::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  background: #00ffff;
+  border: 2px solid #00ffff;
+  cursor: pointer;
+  box-shadow: 0 0 15px rgba(0, 255, 255, 1), 0 0 30px rgba(0, 255, 255, 0.8), 0 0 45px rgba(0, 255, 255, 0.5), inset 0 0 5px rgba(0, 255, 255, 1);
+  clip-path: polygon(2px 0, calc(100% - 2px) 0, 100% 2px, 100% calc(100% - 2px), calc(100% - 2px) 100%, 2px 100%, 0 calc(100% - 2px), 0 2px);
+}
+
+.range-square-thumb::-moz-range-thumb:hover {
+  box-shadow: 0 0 20px rgba(0, 255, 255, 1), 0 0 40px rgba(0, 255, 255, 1), 0 0 60px rgba(0, 255, 255, 0.8), inset 0 0 8px rgba(0, 255, 255, 1);
+}
