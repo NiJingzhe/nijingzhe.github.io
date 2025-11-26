@@ -541,7 +541,12 @@ I am a creative developer floating in the digital void. This space is my garden,
 
       {/* Vignette & Noise */}
       <div className="fixed inset-0 pointer-events-none z-40 shadow-[inset_0_0_100px_rgba(0,0,0,0.9)]" />
-      <div className="fixed inset-0 pointer-events-none z-40 opacity-[0.03] mix-blend-overlay bg-repeat bg-[url('[https://grainy-gradients.vercel.app/noise.svg](https://grainy-gradients.vercel.app/noise.svg)')]" />
+      <div 
+        className="fixed inset-0 pointer-events-none z-40 opacity-[0.03] mix-blend-overlay bg-repeat" 
+        style={{ 
+          backgroundImage: `url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZmlsdGVyIGlkPSJhIj48ZmVUdXJidWxlbmNlIHR5cGU9ImZyYWN0YWxOb2lzZSIgYmFzZUZyZXF1ZW5jeT0iLjkiIG51bU9jdGF2ZXM9IjQiLz48L2ZpbHRlcj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsdGVyPSJ1cmwoI2EpIiBvcGFjaXR5PSIwLjA1Ii8+PC9zdmc+')` 
+        }} 
+      />
       
       {/* Header Info */}
       <div className="fixed top-6 left-6 z-50 flex flex-col gap-2">
