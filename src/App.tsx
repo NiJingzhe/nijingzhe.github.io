@@ -95,7 +95,7 @@ const App = () => {
 - \`zi\` - 放大画布
 - \`zo\` - 缩小画布
 - 鼠标拖拽 - 平移画布
-- Ctrl + 滚轮 - 缩放画布
+- 滚轮 - 缩放画布
 
 ### Edit Mode (编辑模式)
 - \`ESC\` - 退出编辑模式，返回 Normal Mode
@@ -168,7 +168,7 @@ const App = () => {
       } catch (error) {
         console.error('Error saving card:', error);
       }
-    }, 5000); // 5秒防抖
+    }, 2000); // 2秒防抖
   };
 
   // 防抖保存涂鸦
@@ -196,7 +196,7 @@ const App = () => {
       } catch (error) {
         console.error('Error saving drawing:', error);
       }
-    }, 2000); // 2秒防抖
+    }, 500); // 0.5秒防抖
   };
 
   // 手动保存所有数据
@@ -226,6 +226,43 @@ const App = () => {
     const handleWheel = (e: WheelEvent) => {
       // 检查滚动是否发生在可滚动元素内（如 Article 卡片的内容区域）
       const target = e.target as HTMLElement;
+      
+      // 如果目标是 textarea 或 input，检查是否可以滚动
+      if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT') {
+        const element = target as HTMLTextAreaElement | HTMLInputElement;
+        const isAtTop = element.scrollTop <= 0;
+        const isAtBottom = element.scrollTop >= element.scrollHeight - element.clientHeight - 1;
+        const isAtLeft = element.scrollLeft <= 0;
+        const isAtRight = element.scrollLeft >= element.scrollWidth - element.clientWidth - 1;
+        
+        const scrollingDown = e.deltaY > 0;
+        const scrollingUp = e.deltaY < 0;
+        const scrollingRight = e.deltaX > 0;
+        const scrollingLeft = e.deltaX < 0;
+        
+        // 如果 textarea/input 可以滚动且不在边界，不处理 canvas
+        if (element.scrollHeight > element.clientHeight || element.scrollWidth > element.clientWidth) {
+          if ((scrollingDown && !isAtBottom) || 
+              (scrollingUp && !isAtTop) ||
+              (scrollingRight && !isAtRight) ||
+              (scrollingLeft && !isAtLeft)) {
+            return; // 在可滚动区域内滚动，不处理 canvas
+          }
+          
+          // 如果到达边界且继续向边界方向滚动（惯性滚动），阻止 canvas 拖动
+          if ((isAtTop && scrollingUp) || 
+              (isAtBottom && scrollingDown) ||
+              (isAtLeft && scrollingLeft) ||
+              (isAtRight && scrollingRight)) {
+            e.preventDefault();
+            return; // 阻止惯性滚动传递到 canvas
+          }
+        }
+        
+        // 如果 textarea/input 不可滚动，直接返回（编辑模式下，不允许画布移动）
+        return;
+      }
+      
       const scrollableElement = target.closest('[data-scrollable]') || 
                                  target.closest('.overflow-y-auto') ||
                                  target.closest('.overflow-auto');
@@ -263,34 +300,27 @@ const App = () => {
         }
       }
       
-      if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
-        const zoomSensitivity = -0.002;
-        setCanvas(prev => {
-          const oldScale = prev.scale;
-          const newScale = Math.min(Math.max(0.1, prev.scale + e.deltaY * zoomSensitivity), 3);
-          
-          // 获取鼠标在容器中的位置
-          const rect = container.getBoundingClientRect();
-          const mouseX = e.clientX - rect.left;
-          const mouseY = e.clientY - rect.top;
-          
-          // 计算缩放比例
-          const scaleRatio = newScale / oldScale;
-          
-          // 以鼠标位置为中心进行缩放
-          const newX = mouseX - (mouseX - prev.x) * scaleRatio;
-          const newY = mouseY - (mouseY - prev.y) * scaleRatio;
-          
-          return { x: newX, y: newY, scale: newScale };
-        });
-      } else {
-        setCanvas(prev => ({
-          ...prev,
-          x: prev.x - e.deltaX,
-          y: prev.y - e.deltaY
-        }));
-      }
+      // 滚轮缩放（不需要 Ctrl 键）
+      e.preventDefault();
+      const zoomSensitivity = -0.002;
+      setCanvas(prev => {
+        const oldScale = prev.scale;
+        const newScale = Math.min(Math.max(0.1, prev.scale + e.deltaY * zoomSensitivity), 3);
+        
+        // 获取鼠标在容器中的位置
+        const rect = container.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        
+        // 计算缩放比例
+        const scaleRatio = newScale / oldScale;
+        
+        // 以鼠标位置为中心进行缩放
+        const newX = mouseX - (mouseX - prev.x) * scaleRatio;
+        const newY = mouseY - (mouseY - prev.y) * scaleRatio;
+        
+        return { x: newX, y: newY, scale: newScale };
+      });
     };
 
     const handleTouchStart = (e: TouchEvent) => {
@@ -725,13 +755,17 @@ const App = () => {
 
       // 如果正在输入（在 input/textarea 中），不处理其他按键
       if (isInputElement) {
-        // 在命令模式下，允许输入
-        if (vimMode !== 'command') {
+        // 在命令模式下，如果焦点在 command input 上，让 input 自己处理
+        // 否则（比如桌面端键盘输入），继续处理
+        if (vimMode === 'command') {
+          // command input 会自己处理输入，这里不拦截
           return;
         }
+        // 其他模式下，如果是在 input/textarea 中，不处理
+        return;
       }
 
-      // 命令模式
+      // 命令模式（桌面端键盘输入，焦点不在 input 上时）
       if (vimMode === 'command') {
         if (e.key === 'Enter') {
           executeCommand(command);
@@ -992,6 +1026,9 @@ const App = () => {
           }
         }}
         vimMode={vimMode}
+        onUpdateCanvas={(changes) => {
+          setCanvas(prev => ({ ...prev, ...changes }));
+        }}
       />
 
       {/* Input Modals */}
@@ -1071,6 +1108,55 @@ const App = () => {
         focusedCardId={selectedId}
         itemCount={visibleItemsCount}
         scale={canvas.scale}
+        onCommandChange={(newCommand) => {
+          setCommand(newCommand);
+        }}
+        onCommandExecute={(cmd) => {
+          executeCommand(cmd);
+        }}
+        onModeChange={(targetMode) => {
+          if (targetMode === 'normal') {
+            // 切换到 Normal 模式
+            if (vimMode === 'edit') {
+              setEditingCardId(null);
+              setVimMode('normal');
+            } else if (vimMode === 'draw') {
+              setDrawMode('off');
+              setVimMode('normal');
+            } else if (vimMode === 'command') {
+              setCommand('');
+              setVimMode('normal');
+            }
+          } else if (targetMode === 'edit') {
+            // 进入编辑模式
+            if (selectedId) {
+              const card = items.find(item => item.id === selectedId);
+              if (card) {
+                if (card.type === 'article') {
+                  setEditingCardId(selectedId);
+                  setVimMode('edit');
+                } else {
+                  // Repo 或 Image 卡片，弹出 InputModal 进行编辑
+                  setEditingCardId(selectedId);
+                  setVimMode('edit');
+                  if (card.type === 'github') {
+                    setModalType('github');
+                  } else if (card.type === 'image') {
+                    setModalType('image');
+                  }
+                }
+              }
+            }
+          } else if (targetMode === 'draw') {
+            // 进入绘图模式
+            setDrawMode('draw');
+            setVimMode('draw');
+          } else if (targetMode === 'command') {
+            // 进入命令模式
+            setCommand('');
+            setVimMode('command');
+          }
+        }}
       />
     </div>
   );

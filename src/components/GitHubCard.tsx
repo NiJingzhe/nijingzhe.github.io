@@ -37,6 +37,7 @@ export const GitHubCard = ({ data }: GitHubCardProps) => {
             target="_blank" 
             rel="noopener noreferrer" 
             className="text-lg font-bold text-cyan-400 hover:text-pink-400 hover:underline cursor-pointer flex items-center gap-2 break-all relative z-50 text-glow-cyan hover:text-glow-pink"
+            // 链接点击时阻止事件传播，避免触发卡片拖动
             onPointerDown={(e) => e.stopPropagation()}
           >
             {repoName}

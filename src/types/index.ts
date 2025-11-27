@@ -103,5 +103,6 @@ export interface CanvasProps {
   editingCardId?: string | null;
   onEditChange?: (id: string, editing: boolean) => void;
   vimMode?: VimMode;
+  onUpdateCanvas?: (changes: Partial<CanvasState>) => void;
 }
 

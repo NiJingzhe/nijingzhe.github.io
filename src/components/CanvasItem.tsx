@@ -162,7 +162,24 @@ export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEd
         onEdit={undefined}
         isEditing={isEditing}
       />
-      <div className="flex-grow overflow-hidden relative">
+      <div 
+        className="flex-grow overflow-hidden relative"
+        onPointerDown={(e) => {
+          // 如果点击的不是交互元素（如链接、按钮等），让卡片获得焦点
+          const target = e.target as HTMLElement;
+          const isInteractive = ['INPUT', 'TEXTAREA', 'A', 'BUTTON', 'IMG'].includes(target.tagName);
+          const isButton = target.closest('button') !== null;
+          const isLink = target.closest('a') !== null;
+          
+          // 如果是交互元素，不处理（让子组件自己处理）
+          if (!isInteractive && !isButton && !isLink) {
+            // 如果不在编辑模式，让卡片获得焦点
+            if (!isEditing) {
+              onFocus(item.id);
+            }
+          }
+        }}
+      >
         {item.type === 'article' && (
             <ArticleEditor 
                 content={item.content as string} 

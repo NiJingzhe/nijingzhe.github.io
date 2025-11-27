@@ -16,11 +16,14 @@ export const Canvas = ({
   drawWidth,
   editingCardId,
   onEditChange,
-  vimMode = 'normal'
+  vimMode = 'normal',
+  onUpdateCanvas
 }: CanvasProps) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState<Array<{ x: number; y: number }>>([]);
   const [erasedPathIds, setErasedPathIds] = useState<Set<number | string>>(new Set());
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState<{ screenX: number; screenY: number; canvasX: number; canvasY: number } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -92,42 +95,81 @@ export const Canvas = ({
     // 只在主按钮（左键或触控板点击）时开始
     if (e.button !== 0 && e.button !== undefined) return;
     
-    // 如果绘图模式关闭，不处理
-    if (drawMode === 'off') return;
+    // 检查事件目标是否是卡片或其子元素（由于 Content 层在 Drawing Layer 之上，这个检查可能不会执行到，但保留作为保险）
+    const target = e.target as HTMLElement;
+    const isOnCard = target.closest('[data-canvas-item]') !== null;
+    if (isOnCard) {
+      // 点击在卡片上，不处理，让事件传播到卡片
+      return;
+    }
     
     const worldPos = screenToWorld(e.clientX, e.clientY);
     
-    // 如果点击在卡片上，不处理
-    if (isClickOnItem(worldPos.x, worldPos.y)) return;
+    // 如果点击在卡片上，不处理（不阻止事件，让事件传播到卡片）
+    if (isClickOnItem(worldPos.x, worldPos.y)) {
+      // 不调用 preventDefault 和 stopPropagation，让事件继续传播
+      return;
+    }
 
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (drawMode === 'erase') {
-      // 橡皮擦模式：收集要删除的路径（使用 drawWidth 作为橡皮擦半径）
-      const pathsToRemove: (number | string)[] = [];
-      drawPaths.forEach(path => {
-        if (isPointNearPath(worldPos.x, worldPos.y, path, drawWidth) && !erasedPathIds.has(path.id)) {
-          pathsToRemove.push(path.id);
-        }
-      });
-      if (pathsToRemove.length > 0) {
-        setErasedPathIds(prev => {
-          const newSet = new Set(prev);
-          pathsToRemove.forEach(id => newSet.add(id));
-          return newSet;
+    // 如果绘图模式开启，处理绘图逻辑
+    if (drawMode !== 'off') {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      if (drawMode === 'erase') {
+        // 橡皮擦模式：收集要删除的路径（使用 drawWidth 作为橡皮擦半径）
+        const pathsToRemove: (number | string)[] = [];
+        drawPaths.forEach(path => {
+          if (isPointNearPath(worldPos.x, worldPos.y, path, drawWidth) && !erasedPathIds.has(path.id)) {
+            pathsToRemove.push(path.id);
+          }
         });
+        if (pathsToRemove.length > 0) {
+          setErasedPathIds(prev => {
+            const newSet = new Set(prev);
+            pathsToRemove.forEach(id => newSet.add(id));
+            return newSet;
+          });
+        }
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      } else if (drawMode === 'draw') {
+        // 绘制模式：开始绘制
+        setIsDrawing(true);
+        setCurrentPath([worldPos]);
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       }
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    } else if (drawMode === 'draw') {
-      // 绘制模式：开始绘制
-      setIsDrawing(true);
-      setCurrentPath([worldPos]);
+      return;
+    }
+
+    // 绘图模式关闭时，在空白位置开始拖动画布
+    if (drawMode === 'off' && onUpdateCanvas && vimMode === 'normal') {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragging(true);
+      setDragStart({ 
+        screenX: e.clientX, 
+        screenY: e.clientY, 
+        canvasX: canvas.x, 
+        canvasY: canvas.y 
+      });
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     }
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
+    // 拖动画布
+    if (isDragging && dragStart && onUpdateCanvas) {
+      e.preventDefault();
+      e.stopPropagation();
+      const deltaX = e.clientX - dragStart.screenX;
+      const deltaY = e.clientY - dragStart.screenY;
+      onUpdateCanvas({
+        x: dragStart.canvasX + deltaX,
+        y: dragStart.canvasY + deltaY
+      });
+      return;
+    }
+
     if (drawMode === 'off') return;
     
     const worldPos = screenToWorld(e.clientX, e.clientY);
@@ -166,6 +208,17 @@ export const Canvas = ({
 
   const handlePointerUp = (e: React.PointerEvent) => {
     const target = e.currentTarget as HTMLElement;
+    
+    // 结束拖动画布
+    if (isDragging) {
+      e.preventDefault();
+      setIsDragging(false);
+      setDragStart(null);
+      if (target.hasPointerCapture(e.pointerId)) {
+        target.releasePointerCapture(e.pointerId);
+      }
+      return;
+    }
     
     if (drawMode === 'erase') {
       // 橡皮擦模式：一次性删除所有收集到的路径
@@ -231,7 +284,9 @@ export const Canvas = ({
       <div 
         ref={containerRef}
         className="absolute inset-0 w-full h-full z-10"
-        style={{ pointerEvents: drawMode !== 'off' ? 'auto' : 'none' }}
+        style={{ 
+          pointerEvents: drawMode !== 'off' || (vimMode === 'normal' && onUpdateCanvas) ? 'auto' : 'none'
+        }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -290,7 +345,7 @@ export const Canvas = ({
 
       {/* Content */}
       <div 
-        className="absolute inset-0 w-full h-full transform-gpu transition-transform duration-75 ease-out z-0"
+        className="absolute inset-0 w-full h-full transform-gpu transition-transform duration-75 ease-out z-20"
         style={{
           transform: `translate(${canvas.x}px, ${canvas.y}px) scale(${canvas.scale})`,
           transformOrigin: '0 0',
@@ -298,7 +353,7 @@ export const Canvas = ({
         }}
       >
         {items.filter(i => i.visible !== false).map(item => (
-          <div key={item.id} style={{ pointerEvents: 'auto' }}>
+          <div key={item.id} style={{ pointerEvents: 'auto' }} data-canvas-item>
           <CanvasItem 
             item={item} 
             scale={canvas.scale}

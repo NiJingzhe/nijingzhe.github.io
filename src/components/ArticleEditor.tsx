@@ -4,10 +4,18 @@ import type { ArticleEditorProps } from '../types';
 
 export const ArticleEditor = ({ content, onChange, isEditing }: ArticleEditorProps) => {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
     
     const handleWheel = (e: React.WheelEvent) => {
         if (e.ctrlKey || e.metaKey) return;
         
+        // 编辑模式下，直接阻止事件传播到 Canvas
+        if (isEditing) {
+            e.stopPropagation();
+            return;
+        }
+        
+        // 阅读模式下，检查滚动边界
         const container = scrollContainerRef.current;
         if (!container) {
             e.stopPropagation();
@@ -36,6 +44,7 @@ export const ArticleEditor = ({ content, onChange, isEditing }: ArticleEditorPro
         return (
             <div className="w-full h-full relative">
                 <textarea 
+                    ref={textareaRef}
                     className="w-full h-full bg-gray-950/30 backdrop-blur-md text-emerald-400 font-mono text-sm p-4 outline-none resize-none border-none focus:ring-1 focus:ring-emerald-500/50 z-30 relative text-glow-emerald"
                     value={content}
                     onChange={(e) => onChange(e.target.value)}
@@ -55,7 +64,7 @@ export const ArticleEditor = ({ content, onChange, isEditing }: ArticleEditorPro
             className="p-5 h-full overflow-y-auto bg-gray-950/30 backdrop-blur-md text-gray-100 scrollbar-thin scrollbar-thumb-pink-600 scrollbar-track-gray-900 cursor-text z-30 relative"
             data-scrollable
             onWheel={handleWheel}
-            onPointerDown={(e) => e.stopPropagation()}
+            // 不阻止事件传播，让父组件可以处理点击焦点
         >
             <RetroMarkdown content={content} />
             {/* CRT Overlay */}
