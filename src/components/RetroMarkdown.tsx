@@ -1,4 +1,8 @@
 import React from 'react';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { InlineMath, BlockMath } from 'react-katex';
+import 'katex/dist/katex.min.css';
 
 interface RetroMarkdownProps {
   content: string;
@@ -80,11 +84,20 @@ const parseInline = (text: string): React.ReactNode[] => {
     // 匹配行内 LaTeX 公式 $...$
     const inlineLatexMatch = remaining.match(/^\$([^$]+)\$/);
     if (inlineLatexMatch) {
-      parts.push(
-        <span key={key++} className="text-purple-400 font-mono italic bg-purple-900/20 px-1 text-glow-purple">
-          {inlineLatexMatch[1]}
-        </span>
-      );
+      try {
+        parts.push(
+          <span key={key++} className="text-purple-400 bg-purple-900/20 px-1 text-glow-purple inline-block">
+            <InlineMath math={inlineLatexMatch[1]} />
+          </span>
+        );
+      } catch (e) {
+        // 如果公式解析失败，显示原始文本
+        parts.push(
+          <span key={key++} className="text-purple-400 font-mono italic bg-purple-900/20 px-1 text-glow-purple">
+            ${inlineLatexMatch[1]}$
+          </span>
+        );
+      }
       remaining = remaining.slice(inlineLatexMatch[0].length);
       continue;
     }
@@ -148,13 +161,30 @@ export const RetroMarkdown = ({ content }: RetroMarkdownProps) => {
     if (line.trim().startsWith('```')) {
       if (inCodeBlock) {
         // 结束代码块
+        const codeContent = codeBlockContent.join('\n');
+        const language = codeBlockLang || 'text';
         elements.push(
-          <pre
-            key={i}
-            className="bg-gray-900 border border-gray-700 p-3 my-2 text-xs text-green-400 font-mono whitespace-pre-wrap shadow-inner rounded overflow-x-auto text-glow-green"
-          >
-            <code>{codeBlockContent.join('\n')}</code>
-          </pre>
+          <div key={i} className="my-2 rounded overflow-hidden border border-gray-700 shadow-inner">
+            <SyntaxHighlighter
+              language={language}
+              style={vscDarkPlus}
+              customStyle={{
+                margin: 0,
+                padding: '12px',
+                fontSize: '12px',
+                background: '#111827',
+                border: 'none',
+              }}
+              codeTagProps={{
+                style: {
+                  fontFamily: 'monospace',
+                },
+              }}
+              PreTag="div"
+            >
+              {codeContent}
+            </SyntaxHighlighter>
+          </div>
         );
         codeBlockContent = [];
         inCodeBlock = false;
@@ -208,11 +238,20 @@ export const RetroMarkdown = ({ content }: RetroMarkdownProps) => {
     // 处理块级 LaTeX 公式 $$...$$
     if (line.trim().startsWith('$$') && line.trim().endsWith('$$') && line.trim().length > 4) {
       const formula = line.trim().slice(2, -2).trim();
-      elements.push(
-        <div key={i} className="my-4 p-3 bg-purple-900/20 border border-purple-500/30 rounded text-purple-300 font-mono text-center overflow-x-auto text-glow-purple">
-          {formula}
-        </div>
-      );
+      try {
+        elements.push(
+          <div key={i} className="my-4 p-3 bg-purple-900/20 border border-purple-500/30 rounded text-center overflow-x-auto text-glow-purple">
+            <BlockMath math={formula} />
+          </div>
+        );
+      } catch (e) {
+        // 如果公式解析失败，显示原始文本
+        elements.push(
+          <div key={i} className="my-4 p-3 bg-purple-900/20 border border-purple-500/30 rounded text-purple-300 font-mono text-center overflow-x-auto text-glow-purple">
+            {formula}
+          </div>
+        );
+      }
       i++;
       continue;
     }
@@ -226,11 +265,21 @@ export const RetroMarkdown = ({ content }: RetroMarkdownProps) => {
         i++;
       }
       if (i < lines.length) i++; // 跳过结束的 $$
-      elements.push(
-        <div key={i} className="my-4 p-3 bg-purple-900/20 border border-purple-500/30 rounded text-purple-300 font-mono text-center overflow-x-auto whitespace-pre-wrap text-glow-purple">
-          {formulaLines.join('\n')}
-        </div>
-      );
+      const formula = formulaLines.join('\n').trim();
+      try {
+        elements.push(
+          <div key={i} className="my-4 p-3 bg-purple-900/20 border border-purple-500/30 rounded text-center overflow-x-auto whitespace-pre-wrap text-glow-purple">
+            <BlockMath math={formula} />
+          </div>
+        );
+      } catch (e) {
+        // 如果公式解析失败，显示原始文本
+        elements.push(
+          <div key={i} className="my-4 p-3 bg-purple-900/20 border border-purple-500/30 rounded text-purple-300 font-mono text-center overflow-x-auto whitespace-pre-wrap text-glow-purple">
+            {formula}
+          </div>
+        );
+      }
       continue;
     }
 

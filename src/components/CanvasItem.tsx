@@ -144,6 +144,7 @@ export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEd
         transform: `translate(${item.x}px, ${item.y}px)`,
         width: item.width,
         height: item.height,
+        zIndex: isSelected ? 50 : 10,
         transition: (isDragging || isResizing) 
           ? 'none' 
           : 'transform 0.2s ease-out',
