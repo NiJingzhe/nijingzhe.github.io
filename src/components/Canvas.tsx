@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { CanvasItem } from './CanvasItem';
 import type { CanvasProps } from '../types';
+import { filterPath } from '../utils/pathFilter';
 
 export const Canvas = ({ 
   canvas, 
@@ -8,6 +9,8 @@ export const Canvas = ({
   selectedId, 
   onUpdateItem, 
   onFocusItem,
+  onDeleteItem,
+  onUnlockItem,
   drawPaths,
   onAddDrawPath,
   onRemoveDrawPath,
@@ -350,9 +353,11 @@ export const Canvas = ({
     e.preventDefault();
     if (currentPath.length > 1) {
       const pathId = Date.now();
+      // 应用滤波：平滑轨迹并减少点的数量
+      const filteredPoints = filterPath(currentPath);
       onAddDrawPath({
         id: pathId,
-        points: currentPath,
+        points: filteredPoints,
         color: drawColor,
         width: drawWidth
       });
@@ -475,7 +480,9 @@ export const Canvas = ({
             isSelected={selectedId === item.id}
             forceEditing={editingCardId === item.id ? true : undefined}
             onEditChange={(editing) => onEditChange?.(item.id, editing)}
-            allowDrag={vimMode === 'normal'}
+            allowDrag={vimMode === 'normal' && !item.locked}
+            onDelete={onDeleteItem}
+            onUnlock={onUnlockItem}
           />
           </div>
         ))}

@@ -12,6 +12,7 @@ export interface CanvasItemData {
   height: number;
   content: string | GitHubCardData;
   visible?: boolean;
+  locked?: boolean;
 }
 
 export interface CanvasState {
@@ -28,6 +29,8 @@ export interface WindowHeaderProps {
   onClose?: () => void;
   onEdit?: () => void;
   isEditing?: boolean;
+  onLock?: () => void;
+  isLocked?: boolean;
 }
 
 export interface CanvasItemProps {
@@ -39,6 +42,8 @@ export interface CanvasItemProps {
   forceEditing?: boolean;
   onEditChange?: (editing: boolean) => void;
   allowDrag?: boolean;
+  onDelete?: (id: string) => void;
+  onUnlock?: (id: string) => void;
 }
 
 export interface ArticleEditorProps {
@@ -75,10 +80,6 @@ export interface DockProps {
   onDrawColorChange: (color: string) => void;
   onDrawWidthChange: (width: number) => void;
   onDrawModeChange?: (mode: DrawMode) => void;
-  onUndo?: () => void;
-  onRedo?: () => void;
-  canUndo?: boolean;
-  canRedo?: boolean;
 }
 
 export interface DrawPath {
@@ -94,6 +95,8 @@ export interface CanvasProps {
   selectedId: string | null;
   onUpdateItem: (id: string, changes: Partial<CanvasItemData>) => void;
   onFocusItem: (id: string) => void;
+  onDeleteItem?: (id: string) => void;
+  onUnlockItem?: (id: string) => void;
   drawPaths: DrawPath[];
   onAddDrawPath: (path: DrawPath) => void;
   onRemoveDrawPath: (id: number | string) => void;

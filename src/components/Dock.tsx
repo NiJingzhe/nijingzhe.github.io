@@ -1,4 +1,4 @@
-import { Undo2, Redo2, Eraser } from 'lucide-react';
+import { Eraser } from 'lucide-react';
 import type { DockProps } from '../types';
 
 const DRAW_COLORS = [
@@ -17,11 +17,7 @@ export const Dock = ({
   drawWidth,
   onDrawColorChange,
   onDrawWidthChange,
-  onDrawModeChange,
-  onUndo,
-  onRedo,
-  canUndo = false,
-  canRedo = false
+  onDrawModeChange
 }: DockProps) => {
   // 只在 draw 或 erase mode 时显示
   if (drawMode === 'off') {
@@ -143,44 +139,6 @@ export const Dock = ({
               </div>
               <span className="text-xs text-cyan-300 font-mono font-bold w-6 text-right tabular-nums whitespace-nowrap text-glow-cyan">{drawWidth}</span>
             </div>
-
-          {/* Undo/Redo */}
-          {onUndo && onRedo && (
-            <div className="flex items-center gap-2 border-l-2 border-cyan-400/70 pl-3 shadow-[0_0_10px_rgba(0,255,255,0.3)]">
-              <button
-                onClick={onUndo}
-                disabled={!canUndo}
-                className={`p-2 transition-all border-2 ${
-                  canUndo
-                    ? 'bg-cyan-500/40 text-cyan-300 hover:bg-cyan-500/60 hover:text-cyan-100 border-cyan-400/70 hover:border-cyan-300'
-                    : 'bg-black/60 text-gray-600 border-gray-700/50 cursor-not-allowed'
-                }`}
-                style={{
-                  clipPath: 'polygon(3px 0, calc(100% - 3px) 0, 100% 3px, 100% calc(100% - 3px), calc(100% - 3px) 100%, 3px 100%, 0 calc(100% - 3px), 0 3px)',
-                  boxShadow: canUndo ? '0 0 15px rgba(0, 255, 255, 0.6), 0 0 30px rgba(0, 255, 255, 0.3)' : 'none'
-                }}
-                title="撤销"
-              >
-                <Undo2 width={20} height={20} />
-              </button>
-              <button
-                onClick={onRedo}
-                disabled={!canRedo}
-                className={`p-2 transition-all border-2 ${
-                  canRedo
-                    ? 'bg-cyan-500/40 text-cyan-300 hover:bg-cyan-500/60 hover:text-cyan-100 border-cyan-400/70 hover:border-cyan-300'
-                    : 'bg-black/60 text-gray-600 border-gray-700/50 cursor-not-allowed'
-                }`}
-                style={{
-                  clipPath: 'polygon(3px 0, calc(100% - 3px) 0, 100% 3px, 100% calc(100% - 3px), calc(100% - 3px) 100%, 3px 100%, 0 calc(100% - 3px), 0 3px)',
-                  boxShadow: canRedo ? '0 0 15px rgba(0, 255, 255, 0.6), 0 0 30px rgba(0, 255, 255, 0.3)' : 'none'
-                }}
-                title="重做"
-              >
-                <Redo2 width={20} height={20} />
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </div>

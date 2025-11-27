@@ -1,10 +1,12 @@
-import { useRef } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { RetroMarkdown } from './RetroMarkdown';
 import type { ArticleEditorProps } from '../types';
 
 export const ArticleEditor = ({ content, onChange, isEditing }: ArticleEditorProps) => {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const contentWrapperRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
+    const [contentHeight, setContentHeight] = useState(0);
     
     const handleWheel = (e: React.WheelEvent) => {
         if (e.ctrlKey || e.metaKey) return;
@@ -40,6 +42,28 @@ export const ArticleEditor = ({ content, onChange, isEditing }: ArticleEditorPro
         e.stopPropagation();
     };
 
+    // 监听内容高度变化，更新 overlay 高度
+    useEffect(() => {
+        if (isEditing || !contentWrapperRef.current) return;
+        
+        const wrapper = contentWrapperRef.current;
+        const updateHeight = () => {
+            setContentHeight(wrapper.scrollHeight);
+        };
+        
+        // 初始计算（延迟一下确保内容已渲染）
+        const timer = setTimeout(updateHeight, 0);
+        
+        // 监听内容变化
+        const resizeObserver = new ResizeObserver(updateHeight);
+        resizeObserver.observe(wrapper);
+        
+        return () => {
+            clearTimeout(timer);
+            resizeObserver.disconnect();
+        };
+    }, [content, isEditing]);
+
     if (isEditing) {
         return (
             <div className="w-full h-full relative">
@@ -59,16 +83,23 @@ export const ArticleEditor = ({ content, onChange, isEditing }: ArticleEditorPro
         );
     }
     return (
-        <div 
-            ref={scrollContainerRef}
-            className="p-5 h-full overflow-y-auto bg-gray-950/30 backdrop-blur-md text-gray-100 scrollbar-thin scrollbar-thumb-pink-600 scrollbar-track-gray-900 cursor-text z-30 relative"
-            data-scrollable
-            onWheel={handleWheel}
-            // 不阻止事件传播，让父组件可以处理点击焦点
-        >
-            <RetroMarkdown content={content} />
-            {/* CRT Overlay */}
-            <div className="absolute inset-0 crt-overlay z-40" />
+        <div className="w-full h-full relative">
+            <div 
+                ref={scrollContainerRef}
+                className="p-5 h-full overflow-y-auto bg-gray-950/30 backdrop-blur-md text-gray-100 scrollbar-thin scrollbar-thumb-pink-600 scrollbar-track-gray-900 cursor-text z-30 relative"
+                data-scrollable
+                onWheel={handleWheel}
+                // 不阻止事件传播，让父组件可以处理点击焦点
+            >
+                <div ref={contentWrapperRef} className="relative">
+                    <RetroMarkdown content={content} />
+                    {/* CRT Overlay - 覆盖整个滚动内容区域 */}
+                    <div 
+                        className="absolute top-0 left-0 right-0 crt-overlay z-40 pointer-events-none" 
+                        style={{ height: contentHeight || '100%' }}
+                    />
+                </div>
+            </div>
         </div>
     );
 };

@@ -7,6 +7,7 @@ import { StatusBar } from './components/StatusBar';
 import { GitHubInputModal } from './components/GitHubInputModal';
 import { ImageInputModal } from './components/ImageInputModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
+import { UnlockConfirmModal } from './components/UnlockConfirmModal';
 import { fetchGitHubRepoInfo } from './utils/githubApi';
 import { loadCards, saveCard, deleteCard, loadDrawings, saveDrawing, deleteDrawing } from './utils/db';
 import type { CanvasItemData, CanvasState, DrawPath, DrawMode, VimMode } from './types';
@@ -22,6 +23,7 @@ const App = () => {
   const [canvas, setCanvas] = useState<CanvasState>({ x: 0, y: 0, scale: 1 });
   const [modalType, setModalType] = useState<'github' | 'image' | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [unlockConfirmId, setUnlockConfirmId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawPaths, setDrawPaths] = useState<DrawPath[]>([]);
   const [drawMode, setDrawMode] = useState<DrawMode>('off');
@@ -51,6 +53,10 @@ const App = () => {
   
   // 跟踪已保存到数据库的 drawing id（用于区分需要删除的 drawing）
   const savedDrawingIdsRef = useRef<Set<string>>(new Set());
+  
+  // 异步保存队列相关
+  const pendingSaveQueueRef = useRef<Map<number | string, DrawPath>>(new Map());
+  const isSavingRef = useRef(false);
   
   // 跟踪正在初始化的卡片 id，避免重复保存
   const initializingCardIdsRef = useRef<Set<string>>(new Set());
@@ -171,32 +177,87 @@ const App = () => {
     }, 2000); // 2秒防抖
   };
 
-  // 防抖保存涂鸦
+  // 异步保存涂鸦（不阻塞主线程）
   const debouncedSaveDrawing = (drawing: DrawPath) => {
+    // 如果已经保存过，跳过
+    if (typeof drawing.id === 'string' && savedDrawingIdsRef.current.has(drawing.id)) {
+      return;
+    }
+
+    // 添加到待保存队列
+    pendingSaveQueueRef.current.set(drawing.id, drawing);
+
+    // 清除之前的防抖定时器
     if (saveDrawingTimerRef.current) {
       clearTimeout(saveDrawingTimerRef.current);
     }
-    saveDrawingTimerRef.current = setTimeout(async () => {
-      try {
-        // 如果 drawing 已经保存过（在 savedDrawingIdsRef 中），跳过
-        if (typeof drawing.id === 'string' && savedDrawingIdsRef.current.has(drawing.id)) {
-          return;
-        }
-        
-        // 保存到数据库
-        const dbId = await saveDrawing(drawing);
-        if (dbId !== null) {
-          // 记录已保存的 id
-          savedDrawingIdsRef.current.add(dbId);
-          // 更新本地状态中的 id 为数据库生成的 id
-          setDrawPaths(prev => prev.map(p => 
-            p.id === drawing.id ? { ...p, id: dbId } : p
-          ));
-        }
-      } catch (error) {
-        console.error('Error saving drawing:', error);
-      }
+
+    // 使用防抖延迟，但保存操作完全异步执行，不阻塞 UI
+    saveDrawingTimerRef.current = setTimeout(() => {
+      // 使用 queueMicrotask 确保在下一个微任务队列执行，不阻塞当前渲染
+      queueMicrotask(() => {
+        processSaveQueue();
+      });
     }, 500); // 0.5秒防抖
+  };
+
+  // 处理保存队列（完全异步，不阻塞主线程）
+  const processSaveQueue = () => {
+    // 如果正在保存或队列为空，跳过
+    if (isSavingRef.current || pendingSaveQueueRef.current.size === 0) {
+      return;
+    }
+
+    isSavingRef.current = true;
+
+    // 获取待保存的队列并清空
+    const queue = Array.from(pendingSaveQueueRef.current.values());
+    pendingSaveQueueRef.current.clear();
+
+    // 使用 requestIdleCallback 在浏览器空闲时执行保存，或使用 setTimeout 作为回退
+    const executeSave = () => {
+      // 批量保存，完全异步执行，不阻塞主线程
+      Promise.all(queue.map(async (drawing) => {
+        try {
+          // 再次检查是否已保存
+          if (typeof drawing.id === 'string' && savedDrawingIdsRef.current.has(drawing.id)) {
+            return;
+          }
+
+          // 异步保存，不阻塞
+          const dbId = await saveDrawing(drawing);
+          if (dbId !== null) {
+            savedDrawingIdsRef.current.add(dbId);
+            // 使用 queueMicrotask 延迟状态更新，确保不阻塞当前任务
+            queueMicrotask(() => {
+              setDrawPaths(prev => prev.map(p => 
+                p.id === drawing.id ? { ...p, id: dbId } : p
+              ));
+            });
+          }
+        } catch (error) {
+          console.error('Error saving drawing:', error);
+        }
+      })).finally(() => {
+        isSavingRef.current = false;
+        // 如果队列中还有新的项目，继续处理
+        if (pendingSaveQueueRef.current.size > 0) {
+          // 使用 requestIdleCallback 或 setTimeout 继续处理
+          if (typeof requestIdleCallback !== 'undefined') {
+            requestIdleCallback(() => processSaveQueue(), { timeout: 1000 });
+          } else {
+            setTimeout(() => processSaveQueue(), 0);
+          }
+        }
+      });
+    };
+
+    // 优先使用 requestIdleCallback，否则使用 setTimeout
+    if (typeof requestIdleCallback !== 'undefined') {
+      requestIdleCallback(executeSave, { timeout: 1000 });
+    } else {
+      setTimeout(executeSave, 0);
+    }
   };
 
   // 手动保存所有数据
@@ -851,7 +912,7 @@ const App = () => {
           e.stopPropagation();
           if (selectedId) {
             const card = items.find(item => item.id === selectedId);
-            if (card) {
+            if (card && !card.locked) {
               if (card.type === 'article') {
                 setEditingCardId(selectedId);
                 setVimMode('edit');
@@ -884,7 +945,10 @@ const App = () => {
           e.preventDefault();
           e.stopPropagation();
           if (selectedId) {
-            setDeleteConfirmId(selectedId);
+            const card = items.find(item => item.id === selectedId);
+            if (card && !card.locked) {
+              setDeleteConfirmId(selectedId);
+            }
           }
           return;
         }
@@ -894,7 +958,7 @@ const App = () => {
           e.preventDefault();
           e.stopPropagation();
           const card = items.find(item => item.id === selectedId);
-          if (card) {
+          if (card && !card.locked) {
             const moveStep = 10; // 每次移动的像素数
             let newX = card.x;
             let newY = card.y;
@@ -986,6 +1050,8 @@ const App = () => {
         selectedId={selectedId}
         onUpdateItem={updateItem}
         onFocusItem={bringToFront}
+        onDeleteItem={(id) => setDeleteConfirmId(id)}
+        onUnlockItem={(id) => setUnlockConfirmId(id)}
         drawPaths={drawPaths}
         onAddDrawPath={(path) => {
           setDrawPaths(prev => [...prev, path]);
@@ -1060,7 +1126,7 @@ const App = () => {
       {/* Delete Confirm Modal */}
       {deleteConfirmId && (() => {
         const card = items.find(item => item.id === deleteConfirmId);
-        return card ? (
+        return card && !card.locked ? (
           <DeleteConfirmModal
             cardTitle={card.title}
             onClose={() => setDeleteConfirmId(null)}
@@ -1073,6 +1139,20 @@ const App = () => {
               } catch (error) {
                 console.error('Error deleting card:', error);
               }
+            }}
+          />
+        ) : null;
+      })()}
+
+      {/* Unlock Confirm Modal */}
+      {unlockConfirmId && (() => {
+        const card = items.find(item => item.id === unlockConfirmId);
+        return card ? (
+          <UnlockConfirmModal
+            cardTitle={card.title}
+            onClose={() => setUnlockConfirmId(null)}
+            onConfirm={() => {
+              updateItem(unlockConfirmId, { locked: false });
             }}
           />
         ) : null;
@@ -1096,10 +1176,6 @@ const App = () => {
         onDrawColorChange={setDrawColor}
         onDrawWidthChange={setDrawWidth}
         onDrawModeChange={setDrawMode}
-        onUndo={handleUndo}
-        onRedo={handleRedo}
-        canUndo={drawHistoryIndex > 0}
-        canRedo={drawHistoryIndex < drawHistory.length - 1}
       />
 
       <StatusBar 
@@ -1131,7 +1207,7 @@ const App = () => {
             // 进入编辑模式
             if (selectedId) {
               const card = items.find(item => item.id === selectedId);
-              if (card) {
+              if (card && !card.locked) {
                 if (card.type === 'article') {
                   setEditingCardId(selectedId);
                   setVimMode('edit');

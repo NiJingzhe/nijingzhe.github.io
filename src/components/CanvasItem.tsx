@@ -6,7 +6,7 @@ import { GitHubCard } from './GitHubCard';
 import type { GitHubCardData } from './GitHubCard';
 import type { CanvasItemProps } from '../types';
 
-export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEditing, onEditChange, allowDrag = true }: CanvasItemProps) => {
+export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEditing, onEditChange, allowDrag = true, onDelete, onUnlock }: CanvasItemProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [internalEditing, setInternalEditing] = useState(false);
@@ -27,6 +27,11 @@ export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEd
     const isButton = target.closest('button') !== null;
     const isResizeHandle = target.classList.contains('resize-handle') || target.closest('.resize-handle') !== null;
     
+    // 如果锁定，禁用调整大小和拖动
+    if (item.locked) {
+      return;
+    }
+    
     if (isResizeHandle) {
       setIsResizing(true);
       startPos.current = { x: e.clientX, y: e.clientY };
@@ -43,6 +48,11 @@ export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEd
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
+    // 如果锁定，禁用调整大小和拖动
+    if (item.locked) {
+      return;
+    }
+    
     if (isResizing) {
       const dx = (e.clientX - startPos.current.x) / scale;
       const dy = (e.clientY - startPos.current.y) / scale;
@@ -159,9 +169,28 @@ export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEd
         icon={item.icon} 
         colorClass={`${styles.headerBg} ${styles.text}`}
         borderColor={styles.border}
-        onClose={() => onUpdate(item.id, { visible: false })}
+        onClose={() => {
+          if (item.locked) return; // 锁定状态不能删除
+          if (onDelete) {
+            onDelete(item.id);
+          } else {
+            onUpdate(item.id, { visible: false });
+          }
+        }}
         onEdit={undefined}
         isEditing={isEditing}
+        onLock={() => {
+          if (item.locked) {
+            // 如果已锁定，需要先解锁（通过回调触发解锁确认 Modal）
+            if (onUnlock) {
+              onUnlock(item.id);
+            }
+          } else {
+            // 如果未锁定，直接锁定（不需要密码）
+            onUpdate(item.id, { locked: true });
+          }
+        }}
+        isLocked={item.locked}
       />
       <div 
         className="flex-grow overflow-hidden relative"
@@ -184,8 +213,9 @@ export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEd
         {item.type === 'article' && (
             <ArticleEditor 
                 content={item.content as string} 
-                isEditing={isEditing} 
+                isEditing={isEditing && !item.locked} 
                 onChange={(newContent) => {
+                  if (item.locked) return; // 锁定状态不能修改内容
                   // 从内容中提取第一个 H1 作为 title（如果没有 H1，title 为空）
                   const h1Match = newContent.match(/^#\s+(.+)$/m);
                   const newTitle = h1Match ? h1Match[1].trim() : '';
@@ -201,9 +231,11 @@ export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEd
       </div>
       
       {/* Resize handle */}
-      <div 
-        className={`resize-handle absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize ${styles.headerBg} opacity-50 hover:opacity-100 rounded-tl-lg transition-opacity z-30`}
-      />
+      {!item.locked && (
+        <div 
+          className={`resize-handle absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize ${styles.headerBg} opacity-50 hover:opacity-100 rounded-tl-lg transition-opacity z-30`}
+        />
+      )}
     </div>
   );
 };

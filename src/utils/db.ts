@@ -121,7 +121,8 @@ export const loadCards = async (): Promise<CanvasItemData[]> => {
         width: card.width || 600,
         height: card.height || 400,
         content,
-        visible: data.visible !== false // 默认可见，除非明确设置为 false
+        visible: data.visible !== false, // 默认可见，除非明确设置为 false
+        locked: card.locked === true // 从数据库的 locked 列读取
       };
     });
 
@@ -165,6 +166,7 @@ export const saveCard = async (card: CanvasItemData): Promise<void> => {
         position_y: card.y,
         width: card.width,
         height: card.height,
+        locked: card.locked === true, // 保存到数据库的 locked 列
         data,
         updated_at: new Date().toISOString()
       }, {

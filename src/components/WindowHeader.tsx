@@ -1,7 +1,7 @@
-import { X, Edit3, Save } from 'lucide-react';
+import { X, Edit3, Save, Lock, Unlock } from 'lucide-react';
 import type { WindowHeaderProps } from '../types';
 
-export const WindowHeader = ({ title, icon: Icon, colorClass, borderColor, onClose, onEdit, isEditing }: WindowHeaderProps) => {
+export const WindowHeader = ({ title, icon: Icon, colorClass, borderColor, onClose, onEdit, isEditing, onLock, isLocked }: WindowHeaderProps) => {
   // 根据颜色类确定发光效果
   const getGlowClass = () => {
     if (colorClass.includes('pink')) return 'text-glow-pink';
@@ -21,12 +21,28 @@ export const WindowHeader = ({ title, icon: Icon, colorClass, borderColor, onClo
   };
 
   return (
-    <div className={`flex items-center justify-between px-3 py-2 ${getDarkerBg()} ${borderColor} border-b backdrop-blur-sm cursor-grab active:cursor-grabbing select-none group relative z-20`}>
+    <div className={`flex items-center justify-between px-3 py-2 ${getDarkerBg()} ${borderColor} border-b backdrop-blur-sm ${isLocked ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'} select-none group relative z-20`}>
       <div className="flex items-center gap-2 min-w-0 flex-1 overflow-visible">
         <Icon width={16} height={16} className={`animate-pulse flex-shrink-0 text-white opacity-90 ${getGlowClass()}`} />
         <span className={`font-mono text-xs font-bold uppercase tracking-widest bg-transparent overflow-visible whitespace-nowrap ${getGlowClass()}`}>{title}</span>
       </div>
       <div className="flex items-center gap-3 opacity-80 group-hover:opacity-100 transition-opacity pl-2">
+        {onLock && (
+          <button 
+            onClick={(e) => { 
+              e.stopPropagation(); 
+              e.preventDefault();
+              onLock(); 
+            }} 
+            onPointerDown={(e) => {
+              e.stopPropagation();
+            }}
+            className={`text-white opacity-80 hover:text-white hover:opacity-100 transition-colors ${isLocked ? 'text-yellow-400 opacity-100' : ''} ${getGlowClass()}`}
+            title={isLocked ? "已锁定" : "锁定卡片"}
+          >
+            {isLocked ? <Lock width={14} height={14} /> : <Unlock width={14} height={14} />}
+          </button>
+        )}
         {onEdit && (
           <button 
             onClick={(e) => { 
