@@ -24,6 +24,9 @@ export const Canvas = ({
   const [erasedPathIds, setErasedPathIds] = useState<Set<number | string>>(new Set());
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ screenX: number; screenY: number; canvasX: number; canvasY: number } | null>(null);
+  const [isPinching, setIsPinching] = useState(false);
+  const [pinchStart, setPinchStart] = useState<{ distance: number; centerX: number; centerY: number; canvasX: number; canvasY: number; scale: number } | null>(null);
+  const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -47,6 +50,16 @@ export const Canvas = ({
       return x >= item.x && x <= item.x + item.width &&
              y >= item.y && y <= item.y + item.height;
     });
+  };
+
+  // 计算两点之间的距离
+  const getDistance = (x1: number, y1: number, x2: number, y2: number): number => {
+    return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+  };
+
+  // 计算两个指针的中点
+  const getCenterPoint = (p1: { x: number; y: number }, p2: { x: number; y: number }): { x: number; y: number } => {
+    return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
   };
 
   // 检查点是否在路径附近（用于橡皮擦）
@@ -94,6 +107,38 @@ export const Canvas = ({
   const handlePointerDown = (e: React.PointerEvent) => {
     // 只在主按钮（左键或触控板点击）时开始
     if (e.button !== 0 && e.button !== undefined) return;
+    
+    // 记录当前指针位置
+    activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    
+    // 检查是否有两个或更多指针（双指手势）
+    if (activePointers.current.size >= 2 && onUpdateCanvas && drawMode === 'off' && vimMode === 'normal') {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const pointers = Array.from(activePointers.current.values());
+      const p1 = pointers[0];
+      const p2 = pointers[1];
+      const distance = getDistance(p1.x, p1.y, p2.x, p2.y);
+      const center = getCenterPoint(p1, p2);
+      
+      setIsPinching(true);
+      setPinchStart({
+        distance,
+        centerX: center.x,
+        centerY: center.y,
+        canvasX: canvas.x,
+        canvasY: canvas.y,
+        scale: canvas.scale
+      });
+      
+      // 取消拖拽状态
+      setIsDragging(false);
+      setDragStart(null);
+      
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      return;
+    }
     
     // 检查事件目标是否是卡片或其子元素（由于 Content 层在 Drawing Layer 之上，这个检查可能不会执行到，但保留作为保险）
     const target = e.target as HTMLElement;
@@ -157,8 +202,50 @@ export const Canvas = ({
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
+    // 更新指针位置
+    if (activePointers.current.has(e.pointerId)) {
+      activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    
+    // 双指缩放手势
+    if (isPinching && pinchStart && onUpdateCanvas && activePointers.current.size >= 2) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const pointers = Array.from(activePointers.current.values());
+      const p1 = pointers[0];
+      const p2 = pointers[1];
+      const currentDistance = getDistance(p1.x, p1.y, p2.x, p2.y);
+      const scaleRatio = currentDistance / pinchStart.distance;
+      const newScale = Math.max(0.1, Math.min(5, pinchStart.scale * scaleRatio));
+      
+      // 计算当前中心点
+      const currentCenter = getCenterPoint(p1, p2);
+      
+      // 计算缩放中心在世界坐标中的位置
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const centerContainerX = currentCenter.x - rect.left;
+      const centerContainerY = currentCenter.y - rect.top;
+      
+      // 将缩放中心转换为世界坐标（使用初始缩放）
+      const worldCenterX = (centerContainerX - pinchStart.canvasX) / pinchStart.scale;
+      const worldCenterY = (centerContainerY - pinchStart.canvasY) / pinchStart.scale;
+      
+      // 计算新的画布位置，使世界坐标点保持在屏幕上的同一位置
+      const newX = centerContainerX - worldCenterX * newScale;
+      const newY = centerContainerY - worldCenterY * newScale;
+      
+      onUpdateCanvas({
+        x: newX,
+        y: newY,
+        scale: newScale
+      });
+      return;
+    }
+    
     // 拖动画布
-    if (isDragging && dragStart && onUpdateCanvas) {
+    if (isDragging && dragStart && onUpdateCanvas && !isPinching) {
       e.preventDefault();
       e.stopPropagation();
       const deltaX = e.clientX - dragStart.screenX;
@@ -209,8 +296,33 @@ export const Canvas = ({
   const handlePointerUp = (e: React.PointerEvent) => {
     const target = e.currentTarget as HTMLElement;
     
+    // 移除指针
+    activePointers.current.delete(e.pointerId);
+    
+    // 如果只剩一个或没有指针，结束缩放手势
+    if (isPinching && activePointers.current.size < 2) {
+      e.preventDefault();
+      setIsPinching(false);
+      setPinchStart(null);
+      if (target.hasPointerCapture(e.pointerId)) {
+        target.releasePointerCapture(e.pointerId);
+      }
+      // 如果只剩一个指针，可以转为拖拽
+      if (activePointers.current.size === 1 && onUpdateCanvas && drawMode === 'off' && vimMode === 'normal') {
+        const remainingPointer = Array.from(activePointers.current.values())[0];
+        setIsDragging(true);
+        setDragStart({
+          screenX: remainingPointer.x,
+          screenY: remainingPointer.y,
+          canvasX: canvas.x,
+          canvasY: canvas.y
+        });
+      }
+      return;
+    }
+    
     // 结束拖动画布
-    if (isDragging) {
+    if (isDragging && activePointers.current.size === 0) {
       e.preventDefault();
       setIsDragging(false);
       setDragStart(null);
@@ -291,6 +403,7 @@ export const Canvas = ({
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
+        onPointerCancel={handlePointerUp}
       >
         <svg
           ref={svgRef}
