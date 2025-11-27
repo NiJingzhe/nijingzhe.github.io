@@ -10,13 +10,14 @@
 
 ### 1. 在 GitHub 上设置 Secrets
 
-由于项目使用了 Supabase，需要在 GitHub 仓库中设置以下 Secrets：
+由于项目使用了 Supabase 和卡片锁定功能，需要在 GitHub 仓库中设置以下 Secrets：
 
 1. 进入仓库：https://github.com/NiJingzhe/nijingzhe.github.io
 2. 点击 **Settings** → **Secrets and variables** → **Actions**
-3. 点击 **New repository secret**，添加以下两个 secrets：
+3. 点击 **New repository secret**，添加以下三个 secrets：
    - `VITE_SUPABASE_URL`: 你的 Supabase 项目 URL
    - `VITE_SUPABASE_ANON_KEY`: 你的 Supabase Anon Key
+   - `VITE_UNLOCK_PASSWORD`: 卡片解锁密码
 
 ### 2. 启用 GitHub Pages
 
@@ -45,7 +46,7 @@
 
 1. **首次部署可能需要几分钟**：GitHub Actions 需要构建项目
 2. **检查部署状态**：在仓库的 **Actions** 标签页查看部署进度
-3. **环境变量**：确保在 GitHub Secrets 中正确设置了 Supabase 的 URL 和 Key
+3. **环境变量**：确保在 GitHub Secrets 中正确设置了 Supabase 的 URL 和 Key，以及解锁密码
 4. **构建警告**：CSS 构建时可能有警告，但不影响功能
 
 ## 故障排除
