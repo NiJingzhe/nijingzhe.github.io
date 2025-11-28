@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { CanvasItem } from './CanvasItem';
+import { CanvasDrawingLayer } from './CanvasDrawingLayer';
 import type { CanvasProps } from '../types';
 import { filterPath } from '../utils/pathFilter';
 
@@ -30,8 +31,8 @@ export const Canvas = ({
   const [isPinching, setIsPinching] = useState(false);
   const [pinchStart, setPinchStart] = useState<{ distance: number; centerX: number; centerY: number; canvasX: number; canvasY: number; scale: number } | null>(null);
   const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
-  const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasDrawingLayerRef = useRef<{ redraw: () => void }>(null);
 
   // 将屏幕坐标转换为画布世界坐标
   const screenToWorld = (screenX: number, screenY: number): { x: number; y: number } => {
@@ -370,14 +371,6 @@ export const Canvas = ({
     }
   };
 
-  // 将点数组转换为 SVG path 字符串
-  const pointsToPath = (points: Array<{ x: number; y: number }>): string => {
-    if (points.length === 0) return '';
-    if (points.length === 1) {
-      return `M ${points[0].x} ${points[0].y} L ${points[0].x} ${points[0].y}`;
-    }
-    return `M ${points[0].x} ${points[0].y} ${points.slice(1).map(p => `L ${p.x} ${p.y}`).join(' ')}`;
-  };
 
   return (
     <>
@@ -397,7 +390,7 @@ export const Canvas = ({
         />
       </div>
 
-      {/* Drawing Layer (SVG) */}
+      {/* Drawing Layer (Canvas) */}
       <div 
         ref={containerRef}
         className="absolute inset-0 w-full h-full z-10"
@@ -410,55 +403,16 @@ export const Canvas = ({
         onPointerLeave={handlePointerUp}
         onPointerCancel={handlePointerUp}
       >
-        <svg
-          ref={svgRef}
-          className="absolute inset-0 w-full h-full"
-          style={{ 
-            overflow: 'visible', 
-            pointerEvents: 'none',
-            transform: `translate(${canvas.x}px, ${canvas.y}px) scale(${canvas.scale})`,
-            transformOrigin: '0 0',
-          }}
-        >
-          <defs>
-            <filter id="neon-glow" x="-200%" y="-200%" width="500%" height="500%">
-              <feGaussianBlur stdDeviation="8" result="coloredBlur"/>
-              <feGaussianBlur stdDeviation="16" result="coloredBlur2"/>
-              <feMerge>
-                <feMergeNode in="coloredBlur2"/>
-                <feMergeNode in="coloredBlur"/>
-                <feMergeNode in="SourceGraphic"/>
-              </feMerge>
-            </filter>
-          </defs>
-          
-          {/* 已完成的路径 */}
-          {drawPaths.map(path => (
-            <path
-              key={path.id}
-              d={pointsToPath(path.points)}
-              stroke={path.color}
-              strokeWidth={path.width}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              filter="url(#neon-glow)"
-            />
-          ))}
-          
-          {/* 当前正在绘制的路径 */}
-          {isDrawing && currentPath.length > 0 && (
-            <path
-              d={pointsToPath(currentPath)}
-              stroke={drawColor}
-              strokeWidth={drawWidth}
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              filter="url(#neon-glow)"
-            />
-          )}
-        </svg>
+        <CanvasDrawingLayer
+          ref={canvasDrawingLayerRef}
+          drawPaths={drawPaths}
+          currentPath={currentPath}
+          isDrawing={isDrawing}
+          canvas={canvas}
+          drawColor={drawColor}
+          drawWidth={drawWidth}
+          containerRef={containerRef}
+        />
       </div>
 
       {/* Content */}
