@@ -29,6 +29,22 @@ body {
   background: #000000;
 }
 
+/* 隐藏默认光标，但保留交互元素的光标 */
+#root {
+  cursor: none;
+}
+
+/* 交互元素恢复默认光标 */
+input,
+textarea,
+button,
+a,
+select,
+[role="button"],
+[tabindex] {
+  cursor: auto !important;
+}
+
 #root {
   width: 100vw;
   height: 100vh;

@@ -21,7 +21,8 @@ export const Canvas = ({
   editingCardId,
   onEditChange,
   vimMode = 'normal',
-  onUpdateCanvas
+  onUpdateCanvas,
+  onCursorMove
 }: CanvasProps) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState<Array<{ x: number; y: number }>>([]);
@@ -209,6 +210,11 @@ export const Canvas = ({
     // 更新指针位置
     if (activePointers.current.has(e.pointerId)) {
       activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    }
+    
+    // 在拖动或缩放时，通知父组件更新光标位置
+    if ((isDragging || isPinching) && onCursorMove) {
+      onCursorMove(e.clientX, e.clientY);
     }
     
     // 双指缩放手势

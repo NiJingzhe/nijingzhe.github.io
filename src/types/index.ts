@@ -107,5 +107,6 @@ export interface CanvasProps {
   onEditChange?: (id: string, editing: boolean) => void;
   vimMode?: VimMode;
   onUpdateCanvas?: (changes: Partial<CanvasState>) => void;
+  onCursorMove?: (clientX: number, clientY: number) => void;
 }
 

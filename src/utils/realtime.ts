@@ -4,7 +4,8 @@
  */
 
 import supabase from './supabase';
-import { getOnlineCount, getTotalVisits, getTodayVisits } from './db';
+import { getOnlineCount, getTotalVisits, getTodayVisits, getActiveCursors } from './db';
+import type { Cursor } from './db';
 
 /**
  * 订阅在线人数变化
@@ -17,7 +18,6 @@ export const subscribeOnlineCount = (
   // 先获取一次当前在线人数
   getOnlineCount()
     .then((count) => {
-      console.log('Initial online count:', count); // 调试日志
       callback(count);
     })
     .catch((error) => {
@@ -39,7 +39,6 @@ export const subscribeOnlineCount = (
         // 当 sessions 表发生变化时，重新获取在线人数
         try {
           const count = await getOnlineCount();
-          console.log('Realtime update - online count:', count); // 调试日志
           callback(count);
         } catch (error) {
           console.error('Error getting online count:', error);
@@ -77,7 +76,6 @@ export const subscribeVisits = (
   // 先获取一次当前访问量
   Promise.all([getTotalVisits(), getTodayVisits()])
     .then(([total, today]) => {
-      console.log('Initial visits:', { total, today }); // 调试日志
       callback({ total, today });
     })
     .catch((error) => {
@@ -102,10 +100,55 @@ export const subscribeVisits = (
             getTotalVisits(),
             getTodayVisits()
           ]);
-          console.log('Realtime update - visits:', { total, today }); // 调试日志
           callback({ total, today });
         } catch (error) {
           console.error('Error getting visits:', error);
+        }
+      }
+    )
+    .subscribe();
+
+  // 返回取消订阅的函数
+  return () => {
+    channel.unsubscribe();
+  };
+};
+
+/**
+ * 订阅光标位置变化
+ * @param callback 当光标位置变化时调用的回调函数，参数为光标数组
+ * @returns 取消订阅的函数
+ */
+export const subscribeCursors = (
+  callback: (cursors: Cursor[]) => void
+): (() => void) => {
+  // 先获取一次当前活跃光标
+  getActiveCursors()
+    .then((cursors) => {
+      callback(cursors);
+    })
+    .catch((error) => {
+      console.error('Error getting initial cursors:', error);
+      callback([]);
+    });
+
+  // 创建订阅通道
+  const channel = supabase
+    .channel('cursors-updates')
+    .on(
+      'postgres_changes',
+      {
+        event: '*', // 监听所有事件（INSERT, UPDATE, DELETE）
+        schema: 'public',
+        table: 'cursors'
+      },
+      async () => {
+        // 当 cursors 表发生变化时，重新获取所有活跃光标
+        try {
+          const cursors = await getActiveCursors();
+          callback(cursors);
+        } catch (error) {
+          console.error('Error getting cursors:', error);
         }
       }
     )

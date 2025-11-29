@@ -9,9 +9,10 @@ import { ImageInputModal } from './components/ImageInputModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { UnlockConfirmModal } from './components/UnlockConfirmModal';
 import { fetchGitHubRepoInfo } from './utils/githubApi';
-import { loadCards, saveCard, deleteCard, loadDrawings, saveDrawing, deleteDrawing, getTotalVisits, getTodayVisits } from './utils/db';
+import { loadCards, saveCard, deleteCard, loadDrawings, saveDrawing, deleteDrawing, getTotalVisits, getTodayVisits, upsertCursor, getActiveCursors, getVisitorByUid, type Cursor } from './utils/db';
 import { initializeUser, updateSessionHeartbeat, setUserName } from './utils/user';
-import { subscribeOnlineCount, subscribeVisits } from './utils/realtime';
+import { subscribeOnlineCount, subscribeVisits, subscribeCursors } from './utils/realtime';
+import { CursorManager } from './components/CursorManager';
 import { cleanupOnAppStart } from './utils/cleanup';
 import type { CanvasItemData, CanvasState, DrawPath, DrawMode, VimMode } from './types';
 import type { GitHubCardData } from './components/GitHubCard';
@@ -20,6 +21,16 @@ import type { GitHubCardData } from './components/GitHubCard';
 const extractH1Title = (content: string): string => {
   const h1Match = content.match(/^#\s+(.+)$/m);
   return h1Match ? h1Match[1].trim() : '';
+};
+
+// 生成随机颜色
+const generateRandomColor = (): string => {
+  const colors = [
+    '#00ffff', '#ff00ff', '#ffff00', '#00ff00', '#ff0000',
+    '#0000ff', '#ff8800', '#8800ff', '#00ff88', '#ff0088',
+    '#88ff00', '#0088ff', '#ff8888', '#88ff88', '#8888ff',
+  ];
+  return colors[Math.floor(Math.random() * colors.length)];
 };
 
 const App = () => {
@@ -80,6 +91,16 @@ const App = () => {
   
   // 防止重复初始化的标志
   const isInitializingRef = useRef(false);
+
+  // 光标相关状态
+  const [cursors, setCursors] = useState<Cursor[]>([]);
+  const [cursorPosition, setCursorPosition] = useState<{ x: number; y: number; canvasX: number; canvasY: number } | null>(null);
+  const [userColors, setUserColors] = useState<Map<string, string>>(new Map());
+  const [userNames, setUserNames] = useState<Map<string, string | null>>(new Map());
+  const cursorUpdateTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastCursorUpdateRef = useRef<{ x: number; y: number; canvasX: number; canvasY: number } | null>(null);
+  const canvasScaleRef = useRef<number>(canvas.scale);
+  const cursorPositionRef = useRef<{ x: number; y: number; canvasX: number; canvasY: number } | null>(null);
 
   // 初始化加载数据
   useEffect(() => {
@@ -194,6 +215,7 @@ const App = () => {
     let isMounted = true;
     let unsubscribe: (() => void) | null = null;
     let unsubscribeVisits: (() => void) | null = null;
+    let unsubscribeCursors: (() => void) | null = null;
 
     const initUserAndStats = async () => {
       try {
@@ -225,19 +247,16 @@ const App = () => {
           getTodayVisits()
         ]);
         
-        console.log('Loaded visits:', { total, today }); // 调试日志
         setTotalVisits(total);
         setTodayVisits(today);
 
         // 4. 订阅在线人数变化
         unsubscribe = subscribeOnlineCount((count) => {
-          console.log('Online count updated:', count, 'isMounted:', isMounted); // 调试日志
           setOnlineCount(count); // 直接更新，不检查 isMounted（因为回调可能在组件卸载后执行）
         });
 
         // 5. 订阅访问量变化
-        const unsubscribeVisits = subscribeVisits(({ total: newTotal, today: newToday }) => {
-          console.log('Visits updated:', { total: newTotal, today: newToday }); // 调试日志
+        unsubscribeVisits = subscribeVisits(({ total: newTotal, today: newToday }) => {
           setTotalVisits(newTotal);
           setTodayVisits(newToday);
         });
@@ -262,6 +281,91 @@ const App = () => {
         cleanupOnAppStart().catch(error => {
           console.error('Error during cleanup on app start:', error);
         });
+
+        // 7. 初始化光标颜色（为当前用户生成随机颜色）
+        const myColor = generateRandomColor();
+        setUserColors(prev => {
+          const newMap = new Map(prev);
+          newMap.set(uid, myColor);
+          return newMap;
+        });
+
+        // 8. 加载初始光标数据并订阅更新
+        const initialCursors = await getActiveCursors();
+        setCursors(initialCursors);
+        
+        // 为所有光标用户分配颜色和获取用户名
+        const colorMap = new Map<string, string>();
+        const nameMap = new Map<string, string | null>();
+        colorMap.set(uid, myColor);
+        nameMap.set(uid, uname);
+        
+        for (const cursor of initialCursors) {
+          if (!colorMap.has(cursor.visitor_uid)) {
+            colorMap.set(cursor.visitor_uid, generateRandomColor());
+          }
+          if (!nameMap.has(cursor.visitor_uid)) {
+            const visitor = await getVisitorByUid(cursor.visitor_uid);
+            nameMap.set(cursor.visitor_uid, visitor?.uname || null);
+          }
+        }
+        
+        setUserColors(colorMap);
+        setUserNames(nameMap);
+
+        // 订阅光标更新
+        unsubscribeCursors = subscribeCursors((updatedCursors) => {
+          setCursors(updatedCursors);
+          
+          // 为新用户分配颜色和获取用户名
+          setUserColors(prev => {
+            const newColorMap = new Map(prev);
+            updatedCursors.forEach((cursor) => {
+              if (!newColorMap.has(cursor.visitor_uid)) {
+                newColorMap.set(cursor.visitor_uid, generateRandomColor());
+              }
+            });
+            return newColorMap;
+          });
+          
+          setUserNames(prev => {
+            const newNameMap = new Map(prev);
+            updatedCursors.forEach(async (cursor) => {
+              if (!newNameMap.has(cursor.visitor_uid)) {
+                try {
+                  const visitor = await getVisitorByUid(cursor.visitor_uid);
+                  newNameMap.set(cursor.visitor_uid, visitor?.uname || null);
+                } catch (error) {
+                  console.error('Error getting visitor:', error);
+                }
+              }
+            });
+            return newNameMap;
+          });
+        });
+
+        // 9. 启动光标位置更新定时器（每 100ms 更新一次）
+        cursorUpdateTimerRef.current = setInterval(async () => {
+          // 使用 ref 获取最新的 cursorPosition 和 canvas.scale
+          const currentPosition = cursorPositionRef.current;
+          const currentScale = canvasScaleRef.current;
+          
+          if (currentPosition && uid && sid) {
+            const { x, y, canvasX, canvasY } = currentPosition;
+            
+            // 只有当位置发生变化时才更新
+            const last = lastCursorUpdateRef.current;
+            if (!last || last.x !== x || last.y !== y || 
+                last.canvasX !== canvasX || last.canvasY !== canvasY) {
+              try {
+                await upsertCursor(uid, sid, x, y, canvasX, canvasY, currentScale);
+                lastCursorUpdateRef.current = { x, y, canvasX, canvasY };
+              } catch (error) {
+                console.error('Error updating cursor:', error);
+              }
+            }
+          }
+        }, 100);
       } catch (error) {
         console.error('Error initializing user and stats:', error);
       }
@@ -277,14 +381,25 @@ const App = () => {
       if (unsubscribeVisits) {
         unsubscribeVisits();
       }
+      if (unsubscribeCursors) {
+        unsubscribeCursors();
+      }
       if (heartbeatIntervalRef.current) {
         clearInterval(heartbeatIntervalRef.current);
       }
       if (visitsRefreshIntervalRef.current) {
         clearInterval(visitsRefreshIntervalRef.current);
       }
+      if (cursorUpdateTimerRef.current) {
+        clearInterval(cursorUpdateTimerRef.current);
+      }
     };
   }, []); // 空依赖数组，只在组件挂载时执行一次
+
+  // 更新 canvas scale ref
+  useEffect(() => {
+    canvasScaleRef.current = canvas.scale;
+  }, [canvas.scale]);
 
   // 防抖保存卡片
   const debouncedSaveCard = (card: CanvasItemData) => {
@@ -1202,13 +1317,50 @@ const App = () => {
     prevDrawModeRef.current = drawMode;
   }, [drawMode]);
 
+  // 监听鼠标移动，更新光标位置
+  useEffect(() => {
+    const updateCursorPosition = (clientX: number, clientY: number) => {
+      if (!containerRef.current) return;
+      
+      const rect = containerRef.current.getBoundingClientRect();
+      const screenX = clientX;
+      const screenY = clientY;
+      
+      // 转换为画布世界坐标
+      const canvasX = (screenX - rect.left - canvas.x) / canvas.scale;
+      const canvasY = (screenY - rect.top - canvas.y) / canvas.scale;
+      
+      const position = { x: screenX, y: screenY, canvasX, canvasY };
+      setCursorPosition(position);
+      cursorPositionRef.current = position;
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      updateCursorPosition(e.clientX, e.clientY);
+    };
+
+    // 同时监听 pointermove，因为在拖动时（使用 setPointerCapture）pointermove 更可靠
+    const handlePointerMove = (e: PointerEvent) => {
+      updateCursorPosition(e.clientX, e.clientY);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('pointermove', handlePointerMove);
+    
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('pointermove', handlePointerMove);
+    };
+  }, [canvas]);
+
   const visibleItemsCount = items.filter(i => i.visible !== false).length;
+  const myCursorColor = userId ? (userColors.get(userId) || '#00ffff') : '#00ffff';
 
   return (
     <div 
       ref={containerRef}
       className="w-full h-screen overflow-hidden bg-black text-white font-mono relative select-none"
-      style={{ touchAction: 'pan-x pan-y' }}
+      style={{ touchAction: 'pan-x pan-y', cursor: 'none' }}
     >
       <Canvas 
         canvas={canvas}
@@ -1261,6 +1413,31 @@ const App = () => {
         onUpdateCanvas={(changes) => {
           setCanvas(prev => ({ ...prev, ...changes }));
         }}
+        onCursorMove={(clientX, clientY) => {
+          // 在拖动时直接更新光标位置
+          if (containerRef.current) {
+            const rect = containerRef.current.getBoundingClientRect();
+            const screenX = clientX;
+            const screenY = clientY;
+            const canvasX = (screenX - rect.left - canvas.x) / canvas.scale;
+            const canvasY = (screenY - rect.top - canvas.y) / canvas.scale;
+            const position = { x: screenX, y: screenY, canvasX, canvasY };
+            setCursorPosition(position);
+            cursorPositionRef.current = position;
+          }
+        }}
+      />
+
+      {/* 光标管理器 - 管理所有用户的光标 */}
+      <CursorManager
+        cursors={cursors}
+        currentUserId={userId}
+        canvas={canvas}
+        containerRef={containerRef}
+        userColors={userColors}
+        userNames={userNames}
+        myCursorPosition={cursorPosition ? { x: cursorPosition.x, y: cursorPosition.y } : null}
+        myCursorColor={myCursorColor}
       />
 
       {/* Input Modals */}
