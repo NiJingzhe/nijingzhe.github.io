@@ -9,7 +9,9 @@ import { ImageInputModal } from './components/ImageInputModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { UnlockConfirmModal } from './components/UnlockConfirmModal';
 import { fetchGitHubRepoInfo } from './utils/githubApi';
-import { loadCards, saveCard, deleteCard, loadDrawings, saveDrawing, deleteDrawing } from './utils/db';
+import { loadCards, saveCard, deleteCard, loadDrawings, saveDrawing, deleteDrawing, getTotalVisits, getTodayVisits } from './utils/db';
+import { initializeUser, updateSessionHeartbeat, setUserName } from './utils/user';
+import { subscribeOnlineCount } from './utils/realtime';
 import type { CanvasItemData, CanvasState, DrawPath, DrawMode, VimMode } from './types';
 import type { GitHubCardData } from './components/GitHubCard';
 
@@ -60,6 +62,23 @@ const App = () => {
   
   // 跟踪正在初始化的卡片 id，避免重复保存
   const initializingCardIdsRef = useRef<Set<string>>(new Set());
+
+  // 用户相关状态
+  const [userId, setUserId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [userName, setUserNameState] = useState<string | null>(null);
+
+  // 统计信息状态
+  const [onlineCount, setOnlineCount] = useState<number>(0);
+  const [totalVisits, setTotalVisits] = useState<number>(0);
+  const [todayVisits, setTodayVisits] = useState<number>(0);
+
+  // 定时器引用
+  const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const visitsRefreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  
+  // 防止重复初始化的标志
+  const isInitializingRef = useRef(false);
 
   // 初始化加载数据
   useEffect(() => {
@@ -160,6 +179,94 @@ const App = () => {
     
     return () => {
       isMounted = false; // 组件卸载时标记
+    };
+  }, []);
+
+  // 初始化用户和统计信息
+  useEffect(() => {
+    // 防止重复初始化（React StrictMode 会执行两次）
+    if (isInitializingRef.current) {
+      return;
+    }
+    isInitializingRef.current = true;
+
+    let isMounted = true;
+    let unsubscribe: (() => void) | null = null;
+
+    const initUserAndStats = async () => {
+      try {
+        // 1. 初始化用户
+        const { uid, sessionId: sid, userName: uname } = await initializeUser();
+        
+        if (isMounted) {
+          setUserId(uid);
+          setSessionId(sid);
+          setUserNameState(uname);
+        }
+
+        // 2. 启动心跳定时器（每 30 秒）
+        if (sid) {
+          heartbeatIntervalRef.current = setInterval(async () => {
+            try {
+              const newSessionId = await updateSessionHeartbeat(uid);
+              if (isMounted && newSessionId) {
+                setSessionId(newSessionId);
+              }
+            } catch (error) {
+              console.error('Heartbeat failed:', error);
+            }
+          }, 30 * 1000);
+        }
+
+        // 3. 加载访问量统计
+        const [total, today] = await Promise.all([
+          getTotalVisits(),
+          getTodayVisits()
+        ]);
+        
+        console.log('Loaded visits:', { total, today }); // 调试日志
+        setTotalVisits(total);
+        setTodayVisits(today);
+
+        // 4. 订阅在线人数变化
+        unsubscribe = subscribeOnlineCount((count) => {
+          console.log('Online count updated:', count, 'isMounted:', isMounted); // 调试日志
+          setOnlineCount(count); // 直接更新，不检查 isMounted（因为回调可能在组件卸载后执行）
+        });
+
+        // 5. 定期刷新访问量（每 5 分钟）
+        visitsRefreshIntervalRef.current = setInterval(async () => {
+          try {
+            const [total, today] = await Promise.all([
+              getTotalVisits(),
+              getTodayVisits()
+            ]);
+            if (isMounted) {
+              setTotalVisits(total);
+              setTodayVisits(today);
+            }
+          } catch (error) {
+            console.error('Error refreshing visits:', error);
+          }
+        }, 5 * 60 * 1000);
+      } catch (error) {
+        console.error('Error initializing user and stats:', error);
+      }
+    };
+
+    initUserAndStats();
+
+    return () => {
+      isMounted = false;
+      if (unsubscribe) {
+        unsubscribe();
+      }
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+      }
+      if (visitsRefreshIntervalRef.current) {
+        clearInterval(visitsRefreshIntervalRef.current);
+      }
     };
   }, []); // 空依赖数组，只在组件挂载时执行一次
 
@@ -721,20 +828,63 @@ const App = () => {
     });
   };
 
+  // 处理 setuname 命令
+  const handleSetUname = async (uname: string): Promise<void> => {
+    if (!userId) {
+      console.error('User ID not available');
+      return;
+    }
+
+    try {
+      await setUserName(userId, uname);
+      setUserNameState(uname);
+      // 可以在这里添加成功提示
+      console.log(`User name set to: ${uname}`);
+    } catch (error) {
+      console.error('Error setting user name:', error);
+      // 可以在这里添加错误提示
+    }
+  };
+
   // 处理命令
-  const executeCommand = (cmd: string) => {
+  const executeCommand = async (cmd: string) => {
     const trimmed = cmd.trim().toLowerCase();
+    
     if (trimmed === 'na' || trimmed === 'newarticle') {
       handleAddArticle();
+      setCommand('');
+      setVimMode('normal');
     } else if (trimmed === 'nr' || trimmed === 'newrepo') {
       handleAddGitHub();
+      setCommand('');
+      setVimMode('normal');
     } else if (trimmed === 'ni' || trimmed === 'newimage') {
       handleAddImage();
+      setCommand('');
+      setVimMode('normal');
     } else if (trimmed === 'w' || trimmed === 'save') {
       handleManualSave();
+      setCommand('');
+      setVimMode('normal');
+    } else if (trimmed.startsWith('setuname')) {
+      // 处理 setuname 命令
+      const parts = trimmed.split(/\s+/);
+      if (parts.length === 2) {
+        const uname = parts[1];
+        await handleSetUname(uname);
+        setCommand('');
+        setVimMode('normal');
+      } else {
+        // 显示错误提示（可以通过状态显示）
+        console.error('Usage: setuname <name>');
+        setCommand('');
+        setVimMode('normal');
+      }
+    } else {
+      // 未知命令
+      setCommand('');
+      setVimMode('normal');
     }
-    setCommand('');
-    setVimMode('normal');
   };
 
   // Undo/Redo for draw paths
@@ -1184,6 +1334,10 @@ const App = () => {
         focusedCardId={selectedId}
         itemCount={visibleItemsCount}
         scale={canvas.scale}
+        onlineCount={onlineCount}
+        totalVisits={totalVisits}
+        todayVisits={todayVisits}
+        userName={userName}
         onCommandChange={(newCommand) => {
           setCommand(newCommand);
         }}

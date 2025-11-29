@@ -7,12 +7,29 @@ interface StatusBarProps {
   focusedCardId: string | null;
   itemCount: number;
   scale: number;
+  onlineCount?: number;
+  totalVisits?: number;
+  todayVisits?: number;
+  userName?: string | null;
   onModeChange?: (mode: 'normal' | 'edit' | 'draw' | 'command') => void;
   onCommandChange?: (command: string) => void;
   onCommandExecute?: (command: string) => void;
 }
 
-export const StatusBar = ({ mode, command, focusedCardId, itemCount, scale, onModeChange, onCommandChange, onCommandExecute }: StatusBarProps) => {
+export const StatusBar = ({ 
+  mode, 
+  command, 
+  focusedCardId, 
+  itemCount, 
+  scale, 
+  onlineCount = 0,
+  totalVisits = 0,
+  todayVisits = 0,
+  userName = null,
+  onModeChange, 
+  onCommandChange, 
+  onCommandExecute 
+}: StatusBarProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLDivElement>(null);
@@ -172,9 +189,15 @@ export const StatusBar = ({ mode, command, focusedCardId, itemCount, scale, onMo
 
       {/* Status Info */}
       <div className="ml-auto px-2.5 flex items-center gap-3 text-gray-300 text-xs">
-        {focusedCardId && (
-          <span className="text-cyan-300 text-glow-cyan">CARD #{focusedCardId}</span>
+        {userName && (
+          <span className="text-cyan-300 text-glow-cyan">@{userName}</span>
         )}
+        {focusedCardId && (
+          <span className="text-cyan-300 text-glow-cyan">CARD #{focusedCardId.slice(0, 8)}</span>
+        )}
+        <span className="text-green-400">ONLINE: {onlineCount ?? 0}</span>
+        <span>VISITS: {(totalVisits ?? 0).toLocaleString()}</span>
+        <span>TODAY: {(todayVisits ?? 0).toLocaleString()}</span>
         <span>ITEMS: {itemCount}</span>
         <span>ZOOM: {(scale * 100).toFixed(0)}%</span>
       </div>

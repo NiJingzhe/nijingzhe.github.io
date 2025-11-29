@@ -3,6 +3,56 @@ import type { CanvasItemData, DrawPath } from '../types';
 import type { GitHubCardData } from '../components/GitHubCard';
 import { FileText, Github, Image as ImageIcon } from 'lucide-react';
 
+// 类型定义
+export interface Visitor {
+  id: string;
+  uid: string;
+  uname: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  visit_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Session {
+  id: string;
+  visitor_uid: string;
+  last_heartbeat: string;
+  created_at: string;
+}
+
+export interface Visit {
+  id: string;
+  visitor_uid: string;
+  session_id: string | null;
+  visited_at: string;
+  user_agent: string | null;
+  referrer: string | null;
+}
+
+export interface Cursor {
+  id: string;
+  visitor_uid: string;
+  session_id: string | null;
+  x: number;
+  y: number;
+  canvas_x: number | null;
+  canvas_y: number | null;
+  canvas_scale: number;
+  updated_at: string;
+}
+
+export interface EditLock {
+  id: string;
+  card_id: string;
+  visitor_uid: string;
+  session_id: string | null;
+  locked_at: string;
+  expires_at: string;
+  created_at: string;
+}
+
 // 检查数据库中是否存在任何卡片
 export const hasAnyCards = async (): Promise<boolean> => {
   try {
@@ -305,6 +355,528 @@ export const deleteDrawing = async (id: string | number): Promise<void> => {
     }
   } catch (error) {
     console.error('Error deleting drawing:', error);
+    throw error;
+  }
+};
+
+// ============================================
+// 访问者管理 (Visitors)
+// ============================================
+
+// 创建或更新访问者
+export const upsertVisitor = async (uid: string, uname?: string | null): Promise<Visitor | null> => {
+  try {
+    const { data, error } = await supabase.rpc('upsert_visitor', {
+      p_uid: uid,
+      p_uname: uname || null
+    });
+
+    if (error) {
+      console.error('Error upserting visitor:', error);
+      throw error;
+    }
+
+    // 如果使用 RPC 返回的是 UUID，需要查询完整记录
+    if (data) {
+      const { data: visitor, error: fetchError } = await supabase
+        .from('visitors')
+        .select('*')
+        .eq('uid', uid)
+        .single();
+
+      if (fetchError) {
+        console.error('Error fetching visitor:', fetchError);
+        return null;
+      }
+
+      return visitor as Visitor;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error upserting visitor:', error);
+    throw error;
+  }
+};
+
+// 根据 uid 获取访问者
+export const getVisitorByUid = async (uid: string): Promise<Visitor | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('visitors')
+      .select('*')
+      .eq('uid', uid)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // 未找到记录
+        return null;
+      }
+      console.error('Error getting visitor:', error);
+      throw error;
+    }
+
+    return data as Visitor;
+  } catch (error) {
+    console.error('Error getting visitor:', error);
+    return null;
+  }
+};
+
+// 更新访问者名称
+export const updateVisitorName = async (uid: string, uname: string): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('visitors')
+      .update({ uname, updated_at: new Date().toISOString() })
+      .eq('uid', uid);
+
+    if (error) {
+      console.error('Error updating visitor name:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error updating visitor name:', error);
+    throw error;
+  }
+};
+
+// ============================================
+// 会话管理 (Sessions)
+// ============================================
+
+// 创建或更新会话（心跳）
+export const upsertSession = async (visitorUid: string): Promise<string | null> => {
+  try {
+    const { data, error } = await supabase.rpc('upsert_session', {
+      p_visitor_uid: visitorUid
+    });
+
+    if (error) {
+      console.error('Error upserting session:', error);
+      throw error;
+    }
+
+    return data as string | null;
+  } catch (error) {
+    console.error('Error upserting session:', error);
+    throw error;
+  }
+};
+
+// 获取在线人数
+export const getOnlineCount = async (): Promise<number> => {
+  try {
+    const { data, error } = await supabase.rpc('get_online_count');
+
+    if (error) {
+      console.error('Error getting online count:', error);
+      return 0;
+    }
+
+    return (data as number) || 0;
+  } catch (error) {
+    console.error('Error getting online count:', error);
+    return 0;
+  }
+};
+
+// 获取所有在线会话
+export const getOnlineSessions = async (): Promise<Session[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('sessions')
+      .select('*')
+      .gt('last_heartbeat', new Date(Date.now() - 2 * 60 * 1000).toISOString())
+      .order('last_heartbeat', { ascending: false });
+
+    if (error) {
+      console.error('Error getting online sessions:', error);
+      return [];
+    }
+
+    return (data as Session[]) || [];
+  } catch (error) {
+    console.error('Error getting online sessions:', error);
+    return [];
+  }
+};
+
+// ============================================
+// 访问记录 (Visits)
+// ============================================
+
+// 获取用户最后一次访问时间
+export const getLastVisitTime = async (visitorUid: string): Promise<Date | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('visits')
+      .select('visited_at')
+      .eq('visitor_uid', visitorUid)
+      .order('visited_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // 未找到记录
+        return null;
+      }
+      console.error('Error getting last visit time:', error);
+      return null;
+    }
+
+    return data?.visited_at ? new Date(data.visited_at) : null;
+  } catch (error) {
+    console.error('Error getting last visit time:', error);
+    return null;
+  }
+};
+
+// 记录访问（带时间检查，1小时内不重复记录）
+export const recordVisit = async (
+  visitorUid: string,
+  sessionId: string | null,
+  userAgent?: string,
+  referrer?: string
+): Promise<string | null> => {
+  try {
+    // 检查上次访问时间
+    const lastVisitTime = await getLastVisitTime(visitorUid);
+    const now = new Date();
+    
+    if (lastVisitTime) {
+      // 计算时间差（毫秒）
+      const timeDiff = now.getTime() - lastVisitTime.getTime();
+      const oneHourInMs = 60 * 60 * 1000; // 1小时 = 3600000 毫秒
+      
+      if (timeDiff < oneHourInMs) {
+        // 距离上次访问不到1小时，不记录为新访问
+        const minutesAgo = Math.floor(timeDiff / (60 * 1000));
+        console.log(`Visit not recorded: Last visit was ${minutesAgo} minutes ago (less than 1 hour)`);
+        return null;
+      }
+    }
+
+    // 距离上次访问超过1小时，或没有访问记录，记录为新访问
+    console.log('Recording new visit:', { visitorUid, lastVisitTime, now });
+    const { data, error } = await supabase
+      .from('visits')
+      .insert({
+        visitor_uid: visitorUid,
+        session_id: sessionId,
+        user_agent: userAgent || null,
+        referrer: referrer || null
+      })
+      .select('id')
+      .single();
+
+    if (error) {
+      console.error('Error recording visit:', error);
+      throw error;
+    }
+
+    console.log('Visit recorded successfully:', data?.id);
+    return data?.id ?? null;
+  } catch (error) {
+    console.error('Error recording visit:', error);
+    throw error;
+  }
+};
+
+// 获取总访问量
+export const getTotalVisits = async (): Promise<number> => {
+  try {
+    const { data, error } = await supabase.rpc('get_total_visits');
+
+    if (error) {
+      console.error('Error getting total visits:', error);
+      return 0;
+    }
+
+    return (data as number) || 0;
+  } catch (error) {
+    console.error('Error getting total visits:', error);
+    return 0;
+  }
+};
+
+// 获取今日访问量
+export const getTodayVisits = async (): Promise<number> => {
+  try {
+    const { data, error } = await supabase.rpc('get_today_visits');
+
+    if (error) {
+      console.error('Error getting today visits:', error);
+      return 0;
+    }
+
+    return (data as number) || 0;
+  } catch (error) {
+    console.error('Error getting today visits:', error);
+    return 0;
+  }
+};
+
+// ============================================
+// 光标位置 (Cursors)
+// ============================================
+
+// 更新光标位置
+export const upsertCursor = async (
+  visitorUid: string,
+  sessionId: string | null,
+  x: number,
+  y: number,
+  canvasX?: number,
+  canvasY?: number,
+  canvasScale: number = 1
+): Promise<string | null> => {
+  try {
+    const { data, error } = await supabase.rpc('upsert_cursor', {
+      p_visitor_uid: visitorUid,
+      p_session_id: sessionId,
+      p_x: x,
+      p_y: y,
+      p_canvas_x: canvasX || null,
+      p_canvas_y: canvasY || null,
+      p_canvas_scale: canvasScale
+    });
+
+    if (error) {
+      console.error('Error upserting cursor:', error);
+      throw error;
+    }
+
+    return data as string | null;
+  } catch (error) {
+    console.error('Error upserting cursor:', error);
+    throw error;
+  }
+};
+
+// 获取所有活跃光标（5 分钟内更新过）
+export const getActiveCursors = async (): Promise<Cursor[]> => {
+  try {
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from('cursors')
+      .select('*')
+      .gt('updated_at', fiveMinutesAgo)
+      .order('updated_at', { ascending: false });
+
+    if (error) {
+      console.error('Error getting active cursors:', error);
+      return [];
+    }
+
+    return (data as Cursor[]) || [];
+  } catch (error) {
+    console.error('Error getting active cursors:', error);
+    return [];
+  }
+};
+
+// 删除光标（用户离线时）
+export const deleteCursor = async (visitorUid: string, sessionId: string | null): Promise<void> => {
+  try {
+    const { error } = await supabase
+      .from('cursors')
+      .delete()
+      .eq('visitor_uid', visitorUid)
+      .eq('session_id', sessionId);
+
+    if (error) {
+      console.error('Error deleting cursor:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error deleting cursor:', error);
+    throw error;
+  }
+};
+
+// ============================================
+// 编辑锁 (Edit Locks)
+// ============================================
+
+// 获取编辑锁
+export const acquireEditLock = async (
+  cardId: string,
+  visitorUid: string,
+  sessionId: string | null,
+  lockDurationMinutes: number = 10
+): Promise<string> => {
+  try {
+    const { data, error } = await supabase.rpc('acquire_edit_lock', {
+      p_card_id: cardId,
+      p_visitor_uid: visitorUid,
+      p_session_id: sessionId,
+      p_lock_duration_minutes: lockDurationMinutes
+    });
+
+    if (error) {
+      console.error('Error acquiring edit lock:', error);
+      throw error;
+    }
+
+    return data as string;
+  } catch (error) {
+    console.error('Error acquiring edit lock:', error);
+    throw error;
+  }
+};
+
+// 释放编辑锁
+export const releaseEditLock = async (cardId: string, visitorUid: string): Promise<boolean> => {
+  try {
+    const { data, error } = await supabase.rpc('release_edit_lock', {
+      p_card_id: cardId,
+      p_visitor_uid: visitorUid
+    });
+
+    if (error) {
+      console.error('Error releasing edit lock:', error);
+      throw error;
+    }
+
+    return (data as boolean) || false;
+  } catch (error) {
+    console.error('Error releasing edit lock:', error);
+    throw error;
+  }
+};
+
+// 获取卡片的编辑锁信息
+export const getEditLock = async (cardId: string): Promise<EditLock | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('edit_locks')
+      .select('*')
+      .eq('card_id', cardId)
+      .gt('expires_at', new Date().toISOString())
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // 未找到记录
+        return null;
+      }
+      console.error('Error getting edit lock:', error);
+      throw error;
+    }
+
+    return data as EditLock;
+  } catch (error) {
+    console.error('Error getting edit lock:', error);
+    return null;
+  }
+};
+
+// 获取所有活跃的编辑锁
+export const getActiveEditLocks = async (): Promise<EditLock[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('edit_locks')
+      .select('*')
+      .gt('expires_at', new Date().toISOString())
+      .order('locked_at', { ascending: false });
+
+    if (error) {
+      console.error('Error getting active edit locks:', error);
+      return [];
+    }
+
+    return (data as EditLock[]) || [];
+  } catch (error) {
+    console.error('Error getting active edit locks:', error);
+    return [];
+  }
+};
+
+// 检查卡片是否被锁定
+export const isCardLocked = async (cardId: string): Promise<boolean> => {
+  try {
+    const lock = await getEditLock(cardId);
+    return lock !== null;
+  } catch (error) {
+    console.error('Error checking card lock:', error);
+    return false;
+  }
+};
+
+// 检查卡片是否被特定用户锁定
+export const isCardLockedByUser = async (cardId: string, visitorUid: string): Promise<boolean> => {
+  try {
+    const lock = await getEditLock(cardId);
+    return lock !== null && lock.visitor_uid === visitorUid;
+  } catch (error) {
+    console.error('Error checking card lock by user:', error);
+    return false;
+  }
+};
+
+// ============================================
+// 数据清理 (Cleanup)
+// ============================================
+
+// 清理过期会话（超过 2 分钟未心跳）
+export const cleanupExpiredSessions = async (): Promise<void> => {
+  try {
+    const { error } = await supabase.rpc('cleanup_expired_sessions');
+
+    if (error) {
+      console.error('Error cleaning up expired sessions:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error cleaning up expired sessions:', error);
+    throw error;
+  }
+};
+
+// 清理过期光标（超过 5 分钟未更新）
+export const cleanupExpiredCursors = async (): Promise<void> => {
+  try {
+    const { error } = await supabase.rpc('cleanup_expired_cursors');
+
+    if (error) {
+      console.error('Error cleaning up expired cursors:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error cleaning up expired cursors:', error);
+    throw error;
+  }
+};
+
+// 清理过期编辑锁
+export const cleanupExpiredEditLocks = async (): Promise<void> => {
+  try {
+    const { error } = await supabase.rpc('cleanup_expired_edit_locks');
+
+    if (error) {
+      console.error('Error cleaning up expired edit locks:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error cleaning up expired edit locks:', error);
+    throw error;
+  }
+};
+
+// 综合清理函数（清理所有过期数据）
+export const cleanupExpiredData = async (): Promise<void> => {
+  try {
+    const { error } = await supabase.rpc('cleanup_expired_data');
+
+    if (error) {
+      console.error('Error cleaning up expired data:', error);
+      throw error;
+    }
+  } catch (error) {
+    console.error('Error cleaning up expired data:', error);
     throw error;
   }
 };
