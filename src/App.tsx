@@ -13,7 +13,7 @@ import { EditConflictModal } from './components/EditConflictModal';
 import { fetchGitHubRepoInfo } from './utils/githubApi';
 import { loadCards, saveCard, deleteCard, loadDrawings, saveDrawing, deleteDrawing, getTotalVisits, getTodayVisits, upsertCursor, getActiveCursors, getVisitorByUid, type Cursor } from './utils/db';
 import { initializeUser, updateSessionHeartbeat, setUserName } from './utils/user';
-import { subscribeOnlineCount, subscribeVisits, subscribeCursors, subscribeEditLocks, subscribeCards, type EditLockInfo } from './utils/realtime';
+import { subscribeOnlineCount, subscribeVisits, subscribeCursors, subscribeEditLocks, subscribeCards, type EditLockInfo } from './utils/realtime/index';
 import { acquireLock, renewLock, releaseLock, isLockHeldByCurrentUser, isCardLocked, getLockInfo } from './utils/editLock';
 import { CursorManager } from './components/CursorManager';
 import { cleanupOnAppStart } from './utils/cleanup';
@@ -115,6 +115,7 @@ const App = () => {
   const currentEditLockRef = useRef<string | null>(null); // 当前编辑的卡片 ID
   const lockRenewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lockCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null); // 定期检查锁状态
+  const isLockOperationInProgressRef = useRef<boolean>(false); // 锁操作是否正在进行中
 
   // 初始化加载数据
   useEffect(() => {
@@ -446,8 +447,10 @@ const App = () => {
       }
       // 释放当前编辑锁
       if (currentEditLockRef.current && userId) {
-        releaseLock(currentEditLockRef.current, userId).catch(error => {
-          console.error('Error releasing lock on unmount:', error);
+        const cardIdToRelease = currentEditLockRef.current;
+        console.log(`[App] 组件卸载，释放锁 - cardId: ${cardIdToRelease}, userId: ${userId}`);
+        releaseLock(cardIdToRelease, userId).catch(error => {
+          console.error(`[App] 组件卸载时释放锁异常 - cardId: ${cardIdToRelease}, userId: ${userId}:`, error);
         });
       }
       if (visitsRefreshIntervalRef.current) {
@@ -502,12 +505,15 @@ const App = () => {
     saveCardTimerRef.current = setTimeout(async () => {
       // 保存前再次检查锁状态
       if (currentEditLockRef.current === card.id && userId) {
+        console.log(`[App] 保存前检查锁状态 - cardId: ${card.id}, userId: ${userId}, currentEditLockRef: ${currentEditLockRef.current}`);
         const isHeld = await isLockHeldByCurrentUser(card.id, userId);
         if (!isHeld) {
+          console.warn(`[App] 保存时发现锁已被其他人持有 - cardId: ${card.id}, userId: ${userId}`);
           // 锁已被其他人持有，显示冲突对话框
           setConflictCardId(card.id);
           return;
         }
+        console.log(`[App] 锁状态检查通过，继续保存 - cardId: ${card.id}, userId: ${userId}`);
       }
       
       try {
@@ -769,30 +775,37 @@ const App = () => {
             // 防抖续期（2秒）
             lockRenewTimerRef.current = setTimeout(async () => {
               try {
+                console.log(`[App] 开始续期锁 - cardId: ${id}, userId: ${userId}, sessionId: ${sessionId}`);
                 const success = await renewLock(id, userId, sessionId);
                 if (!success) {
                   // 续期失败，锁可能已被其他人持有或已过期
-                  console.warn('Lock renewal failed, lock may have been taken by another user');
+                  console.warn(`[App] 续期锁失败 - cardId: ${id}, userId: ${userId}, 锁可能已被其他人持有或已过期`);
                   // 检查锁状态
                   const isHeld = await isLockHeldByCurrentUser(id, userId!);
+                  console.log(`[App] 续期失败后检查锁状态 - cardId: ${id}, userId: ${userId}, isHeld: ${isHeld}`);
                   if (!isHeld) {
                     // 锁已被其他人持有，清除当前编辑状态并提示用户
+                    console.warn(`[App] 锁已被其他人持有，退出编辑模式 - cardId: ${id}, userId: ${userId}`);
                     await handleModeChange('normal');
                     // 显示冲突提示
                     setConflictCardId(id);
                   }
+                } else {
+                  console.log(`[App] 续期锁成功 - cardId: ${id}, userId: ${userId}`);
                 }
               } catch (error) {
-                console.error('Error renewing lock:', error);
+                console.error(`[App] 续期锁异常 - cardId: ${id}, userId: ${userId}:`, error);
                 // 续期出错，检查锁状态
                 try {
                   const isHeld = await isLockHeldByCurrentUser(id, userId!);
+                  console.log(`[App] 续期异常后检查锁状态 - cardId: ${id}, userId: ${userId}, isHeld: ${isHeld}`);
                   if (!isHeld) {
+                    console.warn(`[App] 锁已被其他人持有，退出编辑模式 - cardId: ${id}, userId: ${userId}`);
                     await handleModeChange('normal');
                     setConflictCardId(id);
                   }
                 } catch (checkError) {
-                  console.error('Error checking lock status:', checkError);
+                  console.error(`[App] 检查锁状态异常 - cardId: ${id}, userId: ${userId}:`, checkError);
                 }
               }
             }, 2000);
@@ -1163,27 +1176,48 @@ const App = () => {
 
   // 统一的模式切换处理函数
   const handleModeChange = async (targetMode: VimMode) => {
+    // 如果锁操作正在进行中，忽略模式切换请求
+    if (isLockOperationInProgressRef.current) {
+      console.log(`[App] 锁操作进行中，忽略模式切换请求 - targetMode: ${targetMode}, currentMode: ${vimMode}`);
+      return;
+    }
+
     if (targetMode === 'normal') {
       // 切换到 Normal 模式
       if (vimMode === 'edit') {
         // 退出编辑模式，释放锁
         if (currentEditLockRef.current && userId) {
+          const cardIdToRelease = currentEditLockRef.current;
+          console.log(`[App] 退出编辑模式，释放锁 - cardId: ${cardIdToRelease}, userId: ${userId}`);
+          
+          // 标记锁操作进行中
+          isLockOperationInProgressRef.current = true;
+          
           try {
-            await releaseLock(currentEditLockRef.current, userId);
-          } catch (error) {
-            console.error('Error releasing lock:', error);
-          }
+            // 等待锁完全释放
+            await releaseLock(cardIdToRelease, userId);
+            console.log(`[App] 释放锁完成 - cardId: ${cardIdToRelease}, userId: ${userId}`);
+            
           // 清除续期定时器
           if (lockRenewTimerRef.current) {
             clearTimeout(lockRenewTimerRef.current);
             lockRenewTimerRef.current = null;
+              console.log(`[App] 清除续期定时器 - cardId: ${cardIdToRelease}`);
           }
           // 清除定期检查定时器
           if (lockCheckIntervalRef.current) {
             clearInterval(lockCheckIntervalRef.current);
             lockCheckIntervalRef.current = null;
+              console.log(`[App] 清除定期检查定时器 - cardId: ${cardIdToRelease}`);
           }
           currentEditLockRef.current = null;
+            console.log(`[App] 清除 currentEditLockRef - cardId: ${cardIdToRelease}`);
+          } catch (error) {
+            console.error(`[App] 释放锁异常 - cardId: ${cardIdToRelease}, userId: ${userId}:`, error);
+          } finally {
+            // 标记锁操作完成
+            isLockOperationInProgressRef.current = false;
+          }
         }
         setEditingCardId(null);
         setVimMode('normal');
@@ -1199,44 +1233,82 @@ const App = () => {
       if (selectedId) {
         const card = items.find(item => item.id === selectedId);
         if (card && !card.locked) {
-          // 检查卡片是否已被其他人锁定
+          // 检查卡片是否已被其他人锁定（使用本地状态，避免额外查询）
           if (userId) {
-            const isLocked = await isCardLocked(selectedId);
-            if (isLocked) {
+            console.log(`[App] 检查卡片是否被锁定 - cardId: ${selectedId}, userId: ${userId}`);
+            // 优先使用本地 editLocks 状态，避免额外的数据库查询
               const lockInfo = editLocks.get(selectedId);
-              if (lockInfo && lockInfo.visitor_uid !== userId) {
+            if (lockInfo) {
+              console.log(`[App] 从本地状态获取锁信息 - cardId: ${selectedId}, lockInfo:`, lockInfo, `currentUserId: ${userId}`);
+              if (lockInfo.visitor_uid !== userId) {
                 // 被其他人锁定，提示用户
+                console.warn(`[App] 卡片被其他人锁定 - cardId: ${selectedId}, lockOwner: ${lockInfo.visitor_uid}, currentUser: ${userId}`);
                 setLockError(`卡片正在被 ${lockInfo.uname || '其他用户'} 编辑中，无法进入编辑模式`);
                 return;
+              } else {
+                console.log(`[App] 卡片被当前用户锁定，可以直接获取 - cardId: ${selectedId}, userId: ${userId}`);
               }
+            } else {
+              console.log(`[App] 本地状态显示卡片未被锁定 - cardId: ${selectedId}`);
             }
+            
+            // 标记锁操作进行中
+            isLockOperationInProgressRef.current = true;
             
             // 尝试获取锁
             try {
+              console.log(`[App] 进入编辑模式前获取锁 - cardId: ${selectedId}, userId: ${userId}, sessionId: ${sessionId}`);
+              const startTime = performance.now();
               const success = await acquireLock(selectedId, userId, sessionId);
+              const endTime = performance.now();
+              console.log(`[App] 获取锁耗时: ${(endTime - startTime).toFixed(2)}ms - cardId: ${selectedId}, userId: ${userId}`);
+              
               if (!success) {
+                console.warn(`[App] 获取锁失败 - cardId: ${selectedId}, userId: ${userId}`);
                 setLockError('无法获取编辑锁，可能正在被其他用户编辑');
+                isLockOperationInProgressRef.current = false;
                 return;
               }
+              
+              // RPC 调用已经保证了原子性，如果返回成功则锁已获取，无需额外验证
+              console.log(`[App] 获取锁成功，设置 currentEditLockRef - cardId: ${selectedId}, userId: ${userId}`);
               currentEditLockRef.current = selectedId;
+              
+              // 锁操作完成，可以进入编辑模式
+              isLockOperationInProgressRef.current = false;
+              
+              if (card.type === 'article') {
+                setEditingCardId(selectedId);
+                setVimMode('edit');
+              } else {
+                // Repo 或 Image 卡片，弹出 InputModal 进行编辑
+                setEditingCardId(selectedId);
+                setVimMode('edit');
+                if (card.type === 'github') {
+                  setModalType('github');
+                } else if (card.type === 'image') {
+                  setModalType('image');
+                }
+              }
             } catch (error) {
-              console.error('Error acquiring lock:', error);
+              console.error(`[App] 获取锁异常 - cardId: ${selectedId}, userId: ${userId}:`, error);
               setLockError('获取编辑锁失败');
+              isLockOperationInProgressRef.current = false;
               return;
             }
-          }
-          
+          } else {
+            // 没有 userId，直接进入编辑模式（不获取锁）
           if (card.type === 'article') {
             setEditingCardId(selectedId);
             setVimMode('edit');
           } else {
-            // Repo 或 Image 卡片，弹出 InputModal 进行编辑
             setEditingCardId(selectedId);
             setVimMode('edit');
             if (card.type === 'github') {
               setModalType('github');
             } else if (card.type === 'image') {
               setModalType('image');
+              }
             }
           }
         }
