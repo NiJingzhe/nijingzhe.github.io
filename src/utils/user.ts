@@ -8,8 +8,10 @@ import {
   upsertSession,
   recordVisit,
   getVisitorByUid,
-  updateVisitorName
+  updateVisitorName,
+  checkUnameExists
 } from './db';
+import { adjectives, nouns } from '../consts/default_name_words';
 
 const USER_ID_KEY = 'personal_page_user_id';
 
@@ -74,20 +76,29 @@ export const initializeUser = async (): Promise<{ uid: string; sessionId: string
         visitor = null; // 确保 visitor 为 null，后续会创建新用户
       }
       
-      // 4. 获取用户名称（如果有）
-      const userName = visitor?.uname || null;
+      // 4. 获取用户名称（如果有），如果没有则生成默认用户名
+      // 处理 null 和空字符串的情况
+      const rawUname = visitor?.uname;
+      let userName = (rawUname && rawUname.trim()) || null;
       
-      // 5. 创建/更新访问者记录
+      // 5. 创建/更新访问者记录（如果用户不存在，先创建记录）
       await upsertVisitor(uid, userName);
       
-      // 6. 创建或复用会话
+      // 6. 如果用户没有名称（null 或空字符串），生成默认用户名并更新
+      if (!userName) {
+        userName = await generateDefaultUserName();
+        // 将生成的默认用户名写入数据库
+        await updateVisitorName(uid, userName);
+      }
+      
+      // 7. 创建或复用会话
       const sessionId = await upsertSession(uid);
       
       if (!sessionId) {
         throw new Error('Failed to create session');
       }
       
-      // 7. 记录访问（recordVisit 内部会检查距离上次访问是否超过1小时）
+      // 8. 记录访问（recordVisit 内部会检查距离上次访问是否超过1小时）
       await recordVisit(
         uid,
         sessionId,
@@ -158,5 +169,38 @@ export const getUserName = async (uid: string): Promise<string | null> => {
     console.error('Error getting user name:', error);
     return null;
   }
+};
+
+/**
+ * 生成默认用户名
+ * 从形容词和名词列表中随机组合，检查是否重复
+ * 最多重试5次，如果都重复则使用重复的名字
+ */
+export const generateDefaultUserName = async (): Promise<string> => {
+  const maxRetries = 5;
+  let lastGeneratedName = '';
+  
+  for (let i = 0; i < maxRetries; i++) {
+    // 随机选择形容词和名词
+    const adjective = adjectives[Math.floor(Math.random() * adjectives.length)];
+    const noun = nouns[Math.floor(Math.random() * nouns.length)];
+    const uname = `${adjective}${noun}`;
+    lastGeneratedName = uname;
+    
+    try {
+      // 检查是否重复
+      const exists = await checkUnameExists(uname);
+      if (!exists) {
+        return uname;
+      }
+    } catch (error) {
+      console.error('Error checking uname existence:', error);
+      // 如果检查出错，直接返回这个名字
+      return uname;
+    }
+  }
+  
+  // 如果5次都重复，返回最后一次生成的名字
+  return lastGeneratedName;
 };
 

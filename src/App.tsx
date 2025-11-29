@@ -200,11 +200,10 @@ const App = () => {
         // 1. 初始化用户
         const { uid, sessionId: sid, userName: uname } = await initializeUser();
         
-        if (isMounted) {
-          setUserId(uid);
-          setSessionId(sid);
-          setUserNameState(uname);
-        }
+        // 总是更新状态（初始化时组件应该已挂载）
+        setUserId(uid);
+        setSessionId(sid);
+        setUserNameState(uname);
 
         // 2. 启动心跳定时器（每 30 秒）
         if (sid) {

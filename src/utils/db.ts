@@ -447,6 +447,27 @@ export const updateVisitorName = async (uid: string, uname: string): Promise<voi
   }
 };
 
+// 检查用户名是否已存在
+export const checkUnameExists = async (uname: string): Promise<boolean> => {
+  try {
+    const { data, error } = await supabase
+      .from('visitors')
+      .select('id')
+      .eq('uname', uname)
+      .limit(1);
+
+    if (error) {
+      console.error('Error checking uname:', error);
+      throw error;
+    }
+
+    return (data?.length ?? 0) > 0;
+  } catch (error) {
+    console.error('Error checking uname:', error);
+    throw error;
+  }
+};
+
 // ============================================
 // 会话管理 (Sessions)
 // ============================================
@@ -539,7 +560,41 @@ export const getLastVisitTime = async (visitorUid: string): Promise<Date | null>
   }
 };
 
-// 记录访问（带时间检查，1小时内不重复记录）
+// 获取用户最后一次访问记录（包括 ID）
+export const getLastVisit = async (visitorUid: string): Promise<{ id: string; visited_at: Date } | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('visits')
+      .select('id, visited_at')
+      .eq('visitor_uid', visitorUid)
+      .order('visited_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // 未找到记录
+        return null;
+      }
+      console.error('Error getting last visit:', error);
+      return null;
+    }
+
+    if (!data) {
+      return null;
+    }
+
+    return {
+      id: data.id,
+      visited_at: new Date(data.visited_at)
+    };
+  } catch (error) {
+    console.error('Error getting last visit:', error);
+    return null;
+  }
+};
+
+// 记录访问（带时间检查，1小时内更新最后访问时间，超过1小时创建新记录）
 export const recordVisit = async (
   visitorUid: string,
   sessionId: string | null,
@@ -547,25 +602,32 @@ export const recordVisit = async (
   referrer?: string
 ): Promise<string | null> => {
   try {
-    // 检查上次访问时间
-    const lastVisitTime = await getLastVisitTime(visitorUid);
+    // 检查上次访问记录
+    const lastVisit = await getLastVisit(visitorUid);
     const now = new Date();
     
-    if (lastVisitTime) {
+    if (lastVisit) {
       // 计算时间差（毫秒）
-      const timeDiff = now.getTime() - lastVisitTime.getTime();
+      const timeDiff = now.getTime() - lastVisit.visited_at.getTime();
       const oneHourInMs = 60 * 60 * 1000; // 1小时 = 3600000 毫秒
       
       if (timeDiff < oneHourInMs) {
-        // 距离上次访问不到1小时，不记录为新访问
-        const minutesAgo = Math.floor(timeDiff / (60 * 1000));
-        console.log(`Visit not recorded: Last visit was ${minutesAgo} minutes ago (less than 1 hour)`);
-        return null;
+        // 距离上次访问不到1小时，更新最后一次访问记录的时间
+        const { error } = await supabase
+          .from('visits')
+          .update({ visited_at: now.toISOString() })
+          .eq('id', lastVisit.id);
+
+        if (error) {
+          console.error('Error updating last visit time:', error);
+          throw error;
+        }
+
+        return lastVisit.id;
       }
     }
 
-    // 距离上次访问超过1小时，或没有访问记录，记录为新访问
-    console.log('Recording new visit:', { visitorUid, lastVisitTime, now });
+    // 距离上次访问超过1小时，或没有访问记录，创建新访问记录
     const { data, error } = await supabase
       .from('visits')
       .insert({
@@ -582,7 +644,6 @@ export const recordVisit = async (
       throw error;
     }
 
-    console.log('Visit recorded successfully:', data?.id);
     return data?.id ?? null;
   } catch (error) {
     console.error('Error recording visit:', error);
