@@ -1,7 +1,7 @@
 import { X, Edit3, Save, Lock, Unlock } from 'lucide-react';
 import type { WindowHeaderProps } from '../types';
 
-export const WindowHeader = ({ title, icon: Icon, colorClass, borderColor, onClose, onEdit, isEditing, onLock, isLocked }: WindowHeaderProps) => {
+export const WindowHeader = ({ title, icon: Icon, colorClass, borderColor, onClose, onEdit, isEditing, onLock, isLocked, editingBy }: WindowHeaderProps) => {
   // 根据颜色类确定发光效果
   const getGlowClass = () => {
     if (colorClass.includes('pink')) return 'text-glow-pink';
@@ -25,6 +25,11 @@ export const WindowHeader = ({ title, icon: Icon, colorClass, borderColor, onClo
       <div className="flex items-center gap-2 min-w-0 flex-1 overflow-visible">
         <Icon width={16} height={16} className={`animate-pulse flex-shrink-0 text-white opacity-90 ${getGlowClass()}`} />
         <span className={`font-mono text-xs font-bold uppercase tracking-widest bg-transparent overflow-visible whitespace-nowrap ${getGlowClass()}`}>{title}</span>
+        {editingBy && (
+          <span className="text-xs font-mono text-yellow-400 animate-pulse ml-2 flex-shrink-0">
+            EDITING BY: {editingBy}
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-3 opacity-80 group-hover:opacity-100 transition-opacity pl-2">
         {onLock && (

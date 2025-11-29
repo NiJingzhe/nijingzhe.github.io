@@ -4,8 +4,15 @@
  */
 
 import supabase from './supabase';
-import { getOnlineCount, getTotalVisits, getTodayVisits, getActiveCursors } from './db';
-import type { Cursor } from './db';
+import { getOnlineCount, getTotalVisits, getTodayVisits, getActiveCursors, getActiveEditLocks, getVisitorByUid } from './db';
+import type { Cursor, EditLock } from './db';
+
+// 编辑锁信息类型
+export interface EditLockInfo {
+  visitor_uid: string;
+  uname: string | null;
+  locked_at: string;
+}
 
 /**
  * 订阅在线人数变化
@@ -149,6 +156,87 @@ export const subscribeCursors = (
           callback(cursors);
         } catch (error) {
           console.error('Error getting cursors:', error);
+        }
+      }
+    )
+    .subscribe();
+
+  // 返回取消订阅的函数
+  return () => {
+    channel.unsubscribe();
+  };
+};
+
+/**
+ * 订阅编辑锁变化
+ * @param callback 当编辑锁变化时调用的回调函数，参数为编辑锁 Map（cardId -> EditLockInfo）
+ * @returns 取消订阅的函数
+ */
+export const subscribeEditLocks = (
+  callback: (locks: Map<string, EditLockInfo>) => void
+): (() => void) => {
+  // 获取所有活跃编辑锁并获取用户名
+  const fetchLocksWithNames = async (): Promise<Map<string, EditLockInfo>> => {
+    try {
+      const locks = await getActiveEditLocks();
+      const locksMap = new Map<string, EditLockInfo>();
+      
+      // 并行获取所有用户名
+      await Promise.all(
+        locks.map(async (lock) => {
+          try {
+            const visitor = await getVisitorByUid(lock.visitor_uid);
+            locksMap.set(lock.card_id, {
+              visitor_uid: lock.visitor_uid,
+              uname: visitor?.uname || null,
+              locked_at: lock.locked_at
+            });
+          } catch (error) {
+            console.error(`Error getting visitor for lock ${lock.card_id}:`, error);
+            // 即使获取用户名失败，也添加锁信息
+            locksMap.set(lock.card_id, {
+              visitor_uid: lock.visitor_uid,
+              uname: null,
+              locked_at: lock.locked_at
+            });
+          }
+        })
+      );
+      
+      return locksMap;
+    } catch (error) {
+      console.error('Error fetching edit locks:', error);
+      return new Map();
+    }
+  };
+
+  // 先获取一次当前编辑锁
+  fetchLocksWithNames()
+    .then((locks) => {
+      callback(locks);
+    })
+    .catch((error) => {
+      console.error('Error getting initial edit locks:', error);
+      callback(new Map());
+    });
+
+  // 创建订阅通道
+  const channel = supabase
+    .channel('edit-locks-updates')
+    .on(
+      'postgres_changes',
+      {
+        event: '*', // 监听所有事件（INSERT, UPDATE, DELETE）
+        schema: 'public',
+        table: 'edit_locks'
+      },
+      async () => {
+        // 当 edit_locks 表发生变化时，重新获取所有活跃编辑锁
+        try {
+          const locks = await fetchLocksWithNames();
+          callback(locks);
+        } catch (error) {
+          console.error('Error getting edit locks:', error);
         }
       }
     )

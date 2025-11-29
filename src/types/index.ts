@@ -31,6 +31,7 @@ export interface WindowHeaderProps {
   isEditing?: boolean;
   onLock?: () => void;
   isLocked?: boolean;
+  editingBy?: string | null;
 }
 
 export interface CanvasItemProps {
@@ -44,6 +45,8 @@ export interface CanvasItemProps {
   allowDrag?: boolean;
   onDelete?: (id: string) => void;
   onUnlock?: (id: string) => void;
+  isBeingEdited?: boolean;
+  editingBy?: string | null;
 }
 
 export interface ArticleEditorProps {
@@ -108,5 +111,7 @@ export interface CanvasProps {
   vimMode?: VimMode;
   onUpdateCanvas?: (changes: Partial<CanvasState>) => void;
   onCursorMove?: (clientX: number, clientY: number) => void;
+  editLocks?: Map<string, { visitor_uid: string; uname: string | null; locked_at: string }>;
+  currentUserId?: string | null;
 }
 

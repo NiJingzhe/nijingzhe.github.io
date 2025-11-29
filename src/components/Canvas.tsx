@@ -22,7 +22,9 @@ export const Canvas = ({
   onEditChange,
   vimMode = 'normal',
   onUpdateCanvas,
-  onCursorMove
+  onCursorMove,
+  editLocks,
+  currentUserId
 }: CanvasProps) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState<Array<{ x: number; y: number }>>([]);
@@ -430,22 +432,30 @@ export const Canvas = ({
           pointerEvents: 'none',
         }}
       >
-        {items.filter(i => i.visible !== false).map(item => (
-          <div key={item.id} style={{ pointerEvents: 'auto' }} data-canvas-item>
-          <CanvasItem 
-            item={item} 
-            scale={canvas.scale}
-            onUpdate={onUpdateItem}
-            onFocus={onFocusItem}
-            isSelected={selectedId === item.id}
-            forceEditing={editingCardId === item.id ? true : undefined}
-            onEditChange={(editing) => onEditChange?.(item.id, editing)}
-            allowDrag={vimMode === 'normal' && !item.locked}
-            onDelete={onDeleteItem}
-            onUnlock={onUnlockItem}
-          />
-          </div>
-        ))}
+        {items.filter(i => i.visible !== false).map(item => {
+          const lockInfo = editLocks?.get(item.id);
+          const isBeingEdited = lockInfo !== undefined && lockInfo.visitor_uid !== currentUserId;
+          const editingBy = isBeingEdited ? lockInfo.uname : null;
+          
+          return (
+            <div key={item.id} style={{ pointerEvents: 'auto' }} data-canvas-item>
+              <CanvasItem 
+                item={item} 
+                scale={canvas.scale}
+                onUpdate={onUpdateItem}
+                onFocus={onFocusItem}
+                isSelected={selectedId === item.id}
+                forceEditing={editingCardId === item.id ? true : undefined}
+                onEditChange={(editing) => onEditChange?.(item.id, editing)}
+                allowDrag={vimMode === 'normal' && !item.locked}
+                onDelete={onDeleteItem}
+                onUnlock={onUnlockItem}
+                isBeingEdited={isBeingEdited}
+                editingBy={editingBy}
+              />
+            </div>
+          );
+        })}
       </div>
 
     </>

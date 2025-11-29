@@ -8,10 +8,12 @@ import { GitHubInputModal } from './components/GitHubInputModal';
 import { ImageInputModal } from './components/ImageInputModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { UnlockConfirmModal } from './components/UnlockConfirmModal';
+import { EditConflictModal } from './components/EditConflictModal';
 import { fetchGitHubRepoInfo } from './utils/githubApi';
 import { loadCards, saveCard, deleteCard, loadDrawings, saveDrawing, deleteDrawing, getTotalVisits, getTodayVisits, upsertCursor, getActiveCursors, getVisitorByUid, type Cursor } from './utils/db';
 import { initializeUser, updateSessionHeartbeat, setUserName } from './utils/user';
-import { subscribeOnlineCount, subscribeVisits, subscribeCursors } from './utils/realtime';
+import { subscribeOnlineCount, subscribeVisits, subscribeCursors, subscribeEditLocks, type EditLockInfo } from './utils/realtime';
+import { acquireLock, renewLock, releaseLock, isLockHeldByCurrentUser, isCardLocked, getLockInfo } from './utils/editLock';
 import { CursorManager } from './components/CursorManager';
 import { cleanupOnAppStart } from './utils/cleanup';
 import type { CanvasItemData, CanvasState, DrawPath, DrawMode, VimMode } from './types';
@@ -38,6 +40,7 @@ const App = () => {
   const [modalType, setModalType] = useState<'github' | 'image' | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [unlockConfirmId, setUnlockConfirmId] = useState<string | null>(null);
+  const [conflictCardId, setConflictCardId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [drawPaths, setDrawPaths] = useState<DrawPath[]>([]);
   const [drawMode, setDrawMode] = useState<DrawMode>('off');
@@ -101,6 +104,12 @@ const App = () => {
   const lastCursorUpdateRef = useRef<{ x: number; y: number; canvasX: number; canvasY: number } | null>(null);
   const canvasScaleRef = useRef<number>(canvas.scale);
   const cursorPositionRef = useRef<{ x: number; y: number; canvasX: number; canvasY: number } | null>(null);
+
+  // 编辑锁相关状态
+  const [editLocks, setEditLocks] = useState<Map<string, EditLockInfo>>(new Map());
+  const currentEditLockRef = useRef<string | null>(null); // 当前编辑的卡片 ID
+  const lockRenewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lockCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null); // 定期检查锁状态
 
   // 初始化加载数据
   useEffect(() => {
@@ -216,6 +225,7 @@ const App = () => {
     let unsubscribe: (() => void) | null = null;
     let unsubscribeVisits: (() => void) | null = null;
     let unsubscribeCursors: (() => void) | null = null;
+    let unsubscribeEditLocks: (() => void) | null = null;
 
     const initUserAndStats = async () => {
       try {
@@ -314,7 +324,7 @@ const App = () => {
         setUserNames(nameMap);
 
         // 订阅光标更新
-        unsubscribeCursors = subscribeCursors((updatedCursors) => {
+        unsubscribeCursors = subscribeCursors(async (updatedCursors) => {
           setCursors(updatedCursors);
           
           // 为新用户分配颜色和获取用户名
@@ -328,20 +338,36 @@ const App = () => {
             return newColorMap;
           });
           
+          // 异步获取所有新用户的用户名
+          const newUserIds = updatedCursors
+            .map(cursor => cursor.visitor_uid)
+            .filter((uid, index, self) => self.indexOf(uid) === index); // 去重
+          
+          const namePromises = newUserIds.map(async (uid) => {
+            try {
+              const visitor = await getVisitorByUid(uid);
+              return { uid, uname: visitor?.uname || null };
+            } catch (error) {
+              console.error('Error getting visitor:', error);
+              return { uid, uname: null };
+            }
+          });
+          
+          const nameResults = await Promise.all(namePromises);
           setUserNames(prev => {
             const newNameMap = new Map(prev);
-            updatedCursors.forEach(async (cursor) => {
-              if (!newNameMap.has(cursor.visitor_uid)) {
-                try {
-                  const visitor = await getVisitorByUid(cursor.visitor_uid);
-                  newNameMap.set(cursor.visitor_uid, visitor?.uname || null);
-                } catch (error) {
-                  console.error('Error getting visitor:', error);
-                }
+            nameResults.forEach(({ uid, uname }) => {
+              if (!newNameMap.has(uid)) {
+                newNameMap.set(uid, uname);
               }
             });
             return newNameMap;
           });
+        });
+
+        // 订阅编辑锁变化
+        unsubscribeEditLocks = subscribeEditLocks((locks) => {
+          setEditLocks(locks);
         });
 
         // 9. 启动光标位置更新定时器（每 100ms 更新一次）
@@ -384,8 +410,25 @@ const App = () => {
       if (unsubscribeCursors) {
         unsubscribeCursors();
       }
+      if (unsubscribeEditLocks) {
+        unsubscribeEditLocks();
+      }
       if (heartbeatIntervalRef.current) {
         clearInterval(heartbeatIntervalRef.current);
+      }
+      // 清理编辑锁续期定时器
+      if (lockRenewTimerRef.current) {
+        clearTimeout(lockRenewTimerRef.current);
+      }
+      // 清理定期检查定时器
+      if (lockCheckIntervalRef.current) {
+        clearInterval(lockCheckIntervalRef.current);
+      }
+      // 释放当前编辑锁
+      if (currentEditLockRef.current && userId) {
+        releaseLock(currentEditLockRef.current, userId).catch(error => {
+          console.error('Error releasing lock on unmount:', error);
+        });
       }
       if (visitsRefreshIntervalRef.current) {
         clearInterval(visitsRefreshIntervalRef.current);
@@ -402,11 +445,57 @@ const App = () => {
   }, [canvas.scale]);
 
   // 防抖保存卡片
-  const debouncedSaveCard = (card: CanvasItemData) => {
+  const debouncedSaveCard = async (card: CanvasItemData) => {
+    // 检查锁状态（如果正在编辑这个卡片）
+    if (currentEditLockRef.current === card.id && userId) {
+      const lockInfo = await getLockInfo(card.id);
+      if (!lockInfo) {
+        // 锁不存在（已过期或被清理）
+        console.warn('Lock does not exist, may have expired');
+        currentEditLockRef.current = null;
+        setEditingCardId(null);
+        setVimMode('normal');
+        setConflictCardId(card.id);
+        return;
+      }
+      
+      if (lockInfo.visitor_uid !== userId) {
+        // 锁已被其他人持有
+        console.warn('Lock held by another user');
+        currentEditLockRef.current = null;
+        setEditingCardId(null);
+        setVimMode('normal');
+        setConflictCardId(card.id);
+        return;
+      }
+      
+      // 检查锁是否过期
+      const expiresAt = new Date(lockInfo.expires_at);
+      if (expiresAt <= new Date()) {
+        // 锁已过期
+        console.warn('Lock has expired');
+        currentEditLockRef.current = null;
+        setEditingCardId(null);
+        setVimMode('normal');
+        setConflictCardId(card.id);
+        return;
+      }
+    }
+
     if (saveCardTimerRef.current) {
       clearTimeout(saveCardTimerRef.current);
     }
     saveCardTimerRef.current = setTimeout(async () => {
+      // 保存前再次检查锁状态
+      if (currentEditLockRef.current === card.id && userId) {
+        const isHeld = await isLockHeldByCurrentUser(card.id, userId);
+        if (!isHeld) {
+          // 锁已被其他人持有，显示冲突对话框
+          setConflictCardId(card.id);
+          return;
+        }
+      }
+      
       try {
         await saveCard(card);
       } catch (error) {
@@ -656,6 +745,49 @@ const App = () => {
           if (!initializingCardIdsRef.current.has(id)) {
             debouncedSaveCard(updatedItem);
           }
+          
+          // 如果更新的是正在编辑的卡片，续期锁
+          if (currentEditLockRef.current === id && userId && sessionId) {
+            // 清除之前的续期定时器
+            if (lockRenewTimerRef.current) {
+              clearTimeout(lockRenewTimerRef.current);
+            }
+            // 防抖续期（2秒）
+            lockRenewTimerRef.current = setTimeout(async () => {
+              try {
+                const success = await renewLock(id, userId, sessionId);
+                if (!success) {
+                  // 续期失败，锁可能已被其他人持有或已过期
+                  console.warn('Lock renewal failed, lock may have been taken by another user');
+                  // 检查锁状态
+                  const isHeld = await isLockHeldByCurrentUser(id, userId!);
+                  if (!isHeld) {
+                    // 锁已被其他人持有，清除当前编辑状态并提示用户
+                    currentEditLockRef.current = null;
+                    setEditingCardId(null);
+                    setVimMode('normal');
+                    // 显示冲突提示
+                    setConflictCardId(id);
+                  }
+                }
+              } catch (error) {
+                console.error('Error renewing lock:', error);
+                // 续期出错，检查锁状态
+                try {
+                  const isHeld = await isLockHeldByCurrentUser(id, userId!);
+                  if (!isHeld) {
+                    currentEditLockRef.current = null;
+                    setEditingCardId(null);
+                    setVimMode('normal');
+                    setConflictCardId(id);
+                  }
+                } catch (checkError) {
+                  console.error('Error checking lock status:', checkError);
+                }
+              }
+            }, 2000);
+          }
+          
           return updatedItem;
         }
         return item;
@@ -1400,6 +1532,8 @@ const App = () => {
         drawColor={drawColor}
         drawWidth={drawWidth}
         editingCardId={editingCardId}
+        editLocks={editLocks}
+        currentUserId={userId}
         onEditChange={(id, editing) => {
           if (editing) {
             setEditingCardId(id);
@@ -1501,6 +1635,30 @@ const App = () => {
         ) : null;
       })()}
 
+      {/* Edit Conflict Modal */}
+      {conflictCardId && (
+        <EditConflictModal
+          onClose={() => setConflictCardId(null)}
+          onConfirm={async () => {
+            if (conflictCardId) {
+              // 刷新卡片内容
+              try {
+                const reloadedCards = await loadCards();
+                const reloadedCard = reloadedCards.find(c => c.id === conflictCardId);
+                if (reloadedCard) {
+                  setItems(prev => prev.map(item => 
+                    item.id === conflictCardId ? reloadedCard : item
+                  ));
+                }
+              } catch (error) {
+                console.error('Error reloading card:', error);
+              }
+              setConflictCardId(null);
+            }
+          }}
+        />
+      )}
+
       {/* Vignette & Noise */}
       <div className="fixed inset-0 pointer-events-none z-40 shadow-[inset_0_0_100px_rgba(0,0,0,0.9)]" />
       <div 
@@ -1537,10 +1695,29 @@ const App = () => {
         onCommandExecute={(cmd) => {
           executeCommand(cmd);
         }}
-        onModeChange={(targetMode) => {
+        onModeChange={async (targetMode) => {
           if (targetMode === 'normal') {
             // 切换到 Normal 模式
             if (vimMode === 'edit') {
+              // 退出编辑模式，释放锁
+              if (currentEditLockRef.current && userId) {
+                try {
+                  await releaseLock(currentEditLockRef.current, userId);
+                } catch (error) {
+                  console.error('Error releasing lock:', error);
+                }
+                // 清除续期定时器
+                if (lockRenewTimerRef.current) {
+                  clearTimeout(lockRenewTimerRef.current);
+                  lockRenewTimerRef.current = null;
+                }
+                // 清除定期检查定时器
+                if (lockCheckIntervalRef.current) {
+                  clearInterval(lockCheckIntervalRef.current);
+                  lockCheckIntervalRef.current = null;
+                }
+                currentEditLockRef.current = null;
+              }
               setEditingCardId(null);
               setVimMode('normal');
             } else if (vimMode === 'draw') {
@@ -1555,6 +1732,33 @@ const App = () => {
             if (selectedId) {
               const card = items.find(item => item.id === selectedId);
               if (card && !card.locked) {
+                // 检查卡片是否已被其他人锁定
+                if (userId) {
+                  const isLocked = await isCardLocked(selectedId);
+                  if (isLocked) {
+                    const lockInfo = editLocks.get(selectedId);
+                    if (lockInfo && lockInfo.visitor_uid !== userId) {
+                      // 被其他人锁定，提示用户
+                      alert(`卡片正在被 ${lockInfo.uname || '其他用户'} 编辑中，无法进入编辑模式`);
+                      return;
+                    }
+                  }
+                  
+                  // 尝试获取锁
+                  try {
+                    const success = await acquireLock(selectedId, userId, sessionId);
+                    if (!success) {
+                      alert('无法获取编辑锁，可能正在被其他用户编辑');
+                      return;
+                    }
+                    currentEditLockRef.current = selectedId;
+                  } catch (error) {
+                    console.error('Error acquiring lock:', error);
+                    alert('获取编辑锁失败');
+                    return;
+                  }
+                }
+                
                 if (card.type === 'article') {
                   setEditingCardId(selectedId);
                   setVimMode('edit');

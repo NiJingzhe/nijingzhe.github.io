@@ -6,7 +6,7 @@ import { GitHubCard } from './GitHubCard';
 import type { GitHubCardData } from './GitHubCard';
 import type { CanvasItemProps } from '../types';
 
-export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEditing, onEditChange, allowDrag = true, onDelete, onUnlock }: CanvasItemProps) => {
+export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEditing, onEditChange, allowDrag = true, onDelete, onUnlock, isBeingEdited, editingBy }: CanvasItemProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [internalEditing, setInternalEditing] = useState(false);
@@ -159,7 +159,7 @@ export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEd
           ? 'none' 
           : 'transform 0.2s ease-out',
       }}
-      className={`absolute flex flex-col bg-gray-900/30 backdrop-blur-md border ${styles.border} ${styles.shadow} transition-shadow duration-300`}
+      className={`absolute flex flex-col bg-gray-900/30 backdrop-blur-md border ${styles.border} ${styles.shadow} transition-shadow duration-300 ${isBeingEdited ? 'ring-2 ring-yellow-400 animate-pulse' : ''}`}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -191,6 +191,7 @@ export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEd
           }
         }}
         isLocked={item.locked}
+        editingBy={editingBy}
       />
       <div 
         className="flex-grow overflow-hidden relative"
