@@ -12,6 +12,7 @@ import { fetchGitHubRepoInfo } from './utils/githubApi';
 import { loadCards, saveCard, deleteCard, loadDrawings, saveDrawing, deleteDrawing, getTotalVisits, getTodayVisits } from './utils/db';
 import { initializeUser, updateSessionHeartbeat, setUserName } from './utils/user';
 import { subscribeOnlineCount, subscribeVisits } from './utils/realtime';
+import { cleanupOnAppStart } from './utils/cleanup';
 import type { CanvasItemData, CanvasState, DrawPath, DrawMode, VimMode } from './types';
 import type { GitHubCardData } from './components/GitHubCard';
 
@@ -257,6 +258,11 @@ const App = () => {
             console.error('Error refreshing visits:', error);
           }
         }, 5 * 60 * 1000);
+
+        // 6. 执行数据清理（过期会话、光标、编辑锁、软删除的卡片）
+        cleanupOnAppStart().catch(error => {
+          console.error('Error during cleanup on app start:', error);
+        });
       } catch (error) {
         console.error('Error initializing user and stats:', error);
       }

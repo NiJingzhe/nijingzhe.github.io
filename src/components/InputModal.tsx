@@ -36,11 +36,21 @@ export const InputModal = ({
         }
     };
 
-    const handleConfirm = () => {
-        if (onConfirm) {
-            onConfirm();
+    const handleConfirm = async () => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
+        try {
+            if (onConfirm) {
+                await Promise.resolve(onConfirm());
+            }
+            onClose();
+        } catch (error) {
+            console.error('Error in onConfirm:', error);
+            // 即使出错也关闭模态框
+            onClose();
+        } finally {
+            setIsSubmitting(false);
         }
-        onClose();
     };
 
     // 键盘快捷键处理
@@ -67,8 +77,7 @@ export const InputModal = ({
                 e.preventDefault();
                 e.stopPropagation();
                 if (!isSubmitting && onConfirm) {
-                    onConfirm();
-                    onClose();
+                    handleConfirm();
                 }
                 return;
             }

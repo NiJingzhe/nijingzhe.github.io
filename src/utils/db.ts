@@ -132,49 +132,54 @@ export const loadCards = async (): Promise<CanvasItemData[]> => {
       return [];
     }
 
-    // 转换为 CanvasItemData 格式
-    const items: CanvasItemData[] = cardsData.map(card => {
-      const data = card.data || {};
-      let content: string | GitHubCardData;
-      let title = (data.title as string) || '';
+    // 转换为 CanvasItemData 格式，并过滤掉已删除的卡片（visible: false）
+    const items: CanvasItemData[] = cardsData
+      .filter(card => {
+        const data = card.data || {};
+        return data.visible !== false; // 只保留可见的卡片
+      })
+      .map(card => {
+        const data = card.data || {};
+        let content: string | GitHubCardData;
+        let title = (data.title as string) || '';
 
-      if (card.type === 'article') {
-        // article 类型：从 data 字段获取内容
-        content = (data.content as string) || '';
-        title = title || extractH1Title(content);
-      } else if (card.type === 'github') {
-        // github 类型：从 data 字段获取
-        content = (data as GitHubCardData) || {
-          repo: '',
-          url: '',
-          language: '',
-          stars: 0,
-          forks: 0,
-          description: ''
+        if (card.type === 'article') {
+          // article 类型：从 data 字段获取内容
+          content = (data.content as string) || '';
+          title = title || extractH1Title(content);
+        } else if (card.type === 'github') {
+          // github 类型：从 data 字段获取
+          content = (data as GitHubCardData) || {
+            repo: '',
+            url: '',
+            language: '',
+            stars: 0,
+            forks: 0,
+            description: ''
+          };
+          title = title || (content.repo ? content.repo.split('/').pop() || '' : 'GIT_REPO');
+        } else if (card.type === 'image') {
+          // image 类型：从 data 字段获取 URL
+          content = (data.url as string) || '';
+          title = title || 'IMAGE_VIEW';
+        } else {
+          content = '';
+        }
+
+        return {
+          id: card.id,
+          type: card.type as 'article' | 'image' | 'github',
+          title,
+          icon: card.type === 'github' ? Github : card.type === 'image' ? ImageIcon : FileText,
+          x: card.position_x || 0,
+          y: card.position_y || 0,
+          width: card.width || 600,
+          height: card.height || 400,
+          content,
+          visible: true, // 已经过滤过，所以这里都是可见的
+          locked: card.locked === true // 从数据库的 locked 列读取
         };
-        title = title || (content.repo ? content.repo.split('/').pop() || '' : 'GIT_REPO');
-      } else if (card.type === 'image') {
-        // image 类型：从 data 字段获取 URL
-        content = (data.url as string) || '';
-        title = title || 'IMAGE_VIEW';
-      } else {
-        content = '';
-      }
-
-      return {
-        id: card.id,
-        type: card.type as 'article' | 'image' | 'github',
-        title,
-        icon: card.type === 'github' ? Github : card.type === 'image' ? ImageIcon : FileText,
-        x: card.position_x || 0,
-        y: card.position_y || 0,
-        width: card.width || 600,
-        height: card.height || 400,
-        content,
-        visible: data.visible !== false, // 默认可见，除非明确设置为 false
-        locked: card.locked === true // 从数据库的 locked 列读取
-      };
-    });
+      });
 
     return items;
   } catch (error) {
@@ -862,6 +867,32 @@ export const cleanupExpiredEditLocks = async (): Promise<void> => {
     }
   } catch (error) {
     console.error('Error cleaning up expired edit locks:', error);
+    throw error;
+  }
+};
+
+// 清理软删除的卡片（删除 visible: false 且超过指定天数的卡片）
+// 默认清理 30 天前软删除的卡片
+// 注意：daysOld = 0 会立即清理所有软删除的卡片（用于测试）
+export const cleanupSoftDeletedCards = async (daysOld: number = 30): Promise<number> => {
+  try {
+    const { data, error } = await supabase.rpc('cleanup_soft_deleted_cards', {
+      days_old: daysOld
+    });
+
+    if (error) {
+      console.error('Error cleaning up soft deleted cards:', error);
+      throw error;
+    }
+
+    const deletedCount = data || 0;
+    if (deletedCount > 0) {
+      console.log(`Cleaned up ${deletedCount} soft deleted card(s) (older than ${daysOld} days)`);
+    }
+    
+    return deletedCount;
+  } catch (error) {
+    console.error('Error cleaning up soft deleted cards:', error);
     throw error;
   }
 };

@@ -8,6 +8,47 @@ interface RetroMarkdownProps {
   content: string;
 }
 
+// 清理 HTML 内容，移除所有 JavaScript 代码
+const sanitizeHtml = (html: string): string => {
+  let sanitized = html;
+  
+  // 1. 移除所有 <script> 标签及其内容（包括各种变体，不区分大小写）
+  sanitized = sanitized.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+  
+  // 2. 移除所有事件处理器属性（onclick, onerror, onload 等，包括大小写变体）
+  sanitized = sanitized.replace(/\s+on\w+\s*=\s*["'][^"']*["']/gi, '');
+  sanitized = sanitized.replace(/\s+on\w+\s*=\s*[^\s>]+/gi, '');
+  
+  // 3. 移除 javascript: URL（在 href, src, action 等属性中，包括编码变体）
+  // 处理普通 javascript: URL
+  sanitized = sanitized.replace(/\s+(href|src|action|formaction|background|cite|codebase|data|dynsrc|lowsrc|manifest|poster|profile)\s*=\s*["']?\s*j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:/gi, '');
+  sanitized = sanitized.replace(/\s+(href|src|action|formaction|background|cite|codebase|data|dynsrc|lowsrc|manifest|poster|profile)\s*=\s*["']?\s*javascript:/gi, '');
+  // 处理编码的 javascript:（如 &#106;avascript:）
+  sanitized = sanitized.replace(/\s+(href|src|action|formaction|background|cite|codebase|data|dynsrc|lowsrc|manifest|poster|profile)\s*=\s*["']?\s*&#\d+;?[a-z]*script:/gi, '');
+  
+  // 4. 移除危险的标签（iframe, object, embed, form 等可能执行代码的标签）
+  sanitized = sanitized.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '');
+  sanitized = sanitized.replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '');
+  sanitized = sanitized.replace(/<embed\b[^>]*>/gi, '');
+  sanitized = sanitized.replace(/<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi, '');
+  
+  // 5. 移除 style 属性中的 javascript: 和 expression()
+  sanitized = sanitized.replace(/\s+style\s*=\s*["'][^"']*javascript:[^"']*["']/gi, '');
+  sanitized = sanitized.replace(/\s+style\s*=\s*["'][^"']*expression\s*\([^"']*["']/gi, '');
+  
+  // 6. 移除 data: URL 中的危险内容（防止 data:text/html 等可执行内容）
+  sanitized = sanitized.replace(/\s+(href|src|action)\s*=\s*["']?\s*data:\s*text\/html/gi, '');
+  sanitized = sanitized.replace(/\s+(href|src|action)\s*=\s*["']?\s*data:\s*text\/javascript/gi, '');
+  
+  // 7. 移除 <link> 标签中的 javascript:（防止通过 link 标签执行代码）
+  sanitized = sanitized.replace(/<link\b[^>]*href\s*=\s*["']?\s*javascript:[^>]*>/gi, '');
+  
+  // 8. 移除 <meta> 标签中的 http-equiv="refresh"（可能用于重定向到恶意页面）
+  sanitized = sanitized.replace(/<meta\b[^>]*http-equiv\s*=\s*["']?\s*refresh[^>]*>/gi, '');
+  
+  return sanitized;
+};
+
 // 解析行内元素：粗体、斜体、链接、图片、行内代码、行内公式
 const parseInline = (text: string): React.ReactNode[] => {
   const parts: React.ReactNode[] = [];
@@ -277,6 +318,8 @@ export const RetroMarkdown = ({ content }: RetroMarkdownProps) => {
       }
       
       if (htmlContent) {
+        // 清理 HTML 内容，移除所有 JavaScript 代码
+        const sanitizedContent = sanitizeHtml(htmlContent);
         elements.push(
           <div 
             key={`html-${i}`} 
@@ -292,7 +335,7 @@ export const RetroMarkdown = ({ content }: RetroMarkdownProps) => {
               margin: '0.5rem 0',
               isolation: 'isolate',
             }}
-            dangerouslySetInnerHTML={{ __html: htmlContent }}
+            dangerouslySetInnerHTML={{ __html: sanitizedContent }}
           />
         );
       }

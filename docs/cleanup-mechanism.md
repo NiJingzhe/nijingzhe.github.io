@@ -66,7 +66,37 @@ $$ LANGUAGE plpgsql;
 
 **作用**: 删除所有已过期的编辑锁（`expires_at` 小于当前时间）
 
-### 4. cleanup_expired_data()（综合函数）
+### 4. cleanup_soft_deleted_cards()
+
+```sql
+CREATE OR REPLACE FUNCTION cleanup_soft_deleted_cards(days_old INTEGER DEFAULT 30)
+RETURNS INTEGER AS $$
+DECLARE
+  deleted_count INTEGER;
+BEGIN
+  -- 删除 data->>'visible' = 'false' 且 updated_at 超过指定天数的卡片
+  DELETE FROM cards
+  WHERE (
+    (data->>'visible')::text = 'false' 
+    OR (data->>'visible')::boolean = false
+  )
+    AND updated_at < NOW() - (days_old || ' days')::INTERVAL;
+  
+  GET DIAGNOSTICS deleted_count = ROW_COUNT;
+  
+  RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+**作用**: 删除所有软删除的卡片（`data.visible = false` 且 `updated_at` 超过指定天数，默认 30 天）
+
+**参数**:
+- `days_old`: 清理多少天前软删除的卡片，默认 30 天
+
+**返回值**: 删除的卡片数量
+
+### 5. cleanup_expired_data()（综合函数）
 
 ```sql
 CREATE OR REPLACE FUNCTION cleanup_expired_data()
@@ -75,11 +105,13 @@ BEGIN
   PERFORM cleanup_expired_sessions();
   PERFORM cleanup_expired_cursors();
   PERFORM cleanup_expired_edit_locks();
+  -- 注意：软删除卡片的清理频率较低（30天），所以不在综合清理中自动执行
+  -- 如需清理软删除卡片，请单独调用 cleanup_soft_deleted_cards()
 END;
 $$ LANGUAGE plpgsql;
 ```
 
-**作用**: 依次调用上述三个清理函数，清理所有类型的过期数据
+**作用**: 依次调用上述三个清理函数，清理所有类型的过期数据（不包括软删除卡片）
 
 ## 客户端调用
 
@@ -89,6 +121,14 @@ $$ LANGUAGE plpgsql;
 // 调用数据库端的 cleanup_expired_data 函数
 export const cleanupExpiredData = async (): Promise<void> => {
   const { error } = await supabase.rpc('cleanup_expired_data');
+  // 处理错误...
+};
+
+// 清理软删除的卡片（默认清理 30 天前的）
+export const cleanupSoftDeletedCards = async (daysOld: number = 30): Promise<void> => {
+  const { error } = await supabase.rpc('cleanup_soft_deleted_cards', {
+    days_old: daysOld
+  });
   // 处理错误...
 };
 ```
@@ -110,6 +150,7 @@ export const cleanupExpiredData = async (): Promise<void> => {
 - **所有过期会话**: 删除所有超过 2 分钟未心跳的会话（不管属于哪个用户）
 - **所有过期光标**: 删除所有超过 5 分钟未更新的光标（不管属于哪个用户）
 - **所有过期编辑锁**: 删除所有已过期的编辑锁（不管属于哪个用户）
+- **所有软删除的卡片**: 删除所有 `visible: false` 且超过指定天数（默认 30 天）的卡片
 
 ### 为什么清理所有数据？
 
@@ -129,8 +170,8 @@ export const cleanupExpiredData = async (): Promise<void> => {
 
 ### 清理频率
 
-- **最小间隔**: 建议至少 2-5 分钟清理一次
-- **最大间隔**: 不建议超过 30 分钟，否则过期数据会累积过多
+- **过期数据（会话、光标、编辑锁）**: 建议至少 2-5 分钟清理一次，最大间隔不超过 30 分钟
+- **软删除的卡片**: 由于清理策略是删除 30 天前的软删除卡片，建议每天清理一次即可，或在应用启动时清理
 
 ## 性能考虑
 
@@ -165,8 +206,14 @@ WHERE updated_at < NOW() - INTERVAL '5 minutes';
 SELECT COUNT(*) FROM edit_locks 
 WHERE expires_at < NOW();
 
+-- 查看软删除的卡片数量（清理前）
+SELECT COUNT(*) FROM cards 
+WHERE (data->>'visible')::text = 'false' 
+  AND updated_at < NOW() - INTERVAL '30 days';
+
 -- 手动执行清理
 SELECT cleanup_expired_data();
+SELECT cleanup_soft_deleted_cards(30); -- 清理 30 天前软删除的卡片
 
 -- 再次查看数量（应该为 0）
 ```

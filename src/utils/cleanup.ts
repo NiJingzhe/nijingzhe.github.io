@@ -1,10 +1,10 @@
 /**
  * 数据清理工具
  * 
- * 提供多种方式触发清理过期数据（会话、光标、编辑锁）
+ * 提供多种方式触发清理过期数据（会话、光标、编辑锁、软删除的卡片）
  */
 
-import { cleanupExpiredData } from './db';
+import { cleanupExpiredData, cleanupSoftDeletedCards } from './db';
 
 /**
  * 方案 1: 应用启动时清理
@@ -13,7 +13,11 @@ import { cleanupExpiredData } from './db';
 export const cleanupOnAppStart = async (): Promise<void> => {
   try {
     await cleanupExpiredData();
-    console.log('Cleanup completed on app start');
+    // 清理 1 天前软删除的卡片（频率较低，只在启动时执行）
+    // 注意：可以通过环境变量或配置调整清理天数，测试时可以设置为 0 来立即清理所有软删除的卡片
+    const softDeleteDays = 1; // 清理 1 天前软删除的卡片
+    const deletedCount = await cleanupSoftDeletedCards(softDeleteDays);
+    console.log('Cleanup completed on app start', { deletedCards: deletedCount });
   } catch (error) {
     console.error('Failed to cleanup on app start:', error);
   }
@@ -36,6 +40,9 @@ export const startPeriodicCleanup = (intervalMs: number = 5 * 60 * 1000): Return
   // 然后定期执行
   return setInterval(() => {
     cleanupExpiredData().catch(console.error);
+    // 定期清理软删除的卡片（每天执行一次，通过检查时间戳实现）
+    // 这里简化处理，每次清理时都检查，但数据库端函数会判断是否真的需要清理
+    cleanupSoftDeletedCards(1).catch(console.error);
   }, intervalMs);
 };
 
