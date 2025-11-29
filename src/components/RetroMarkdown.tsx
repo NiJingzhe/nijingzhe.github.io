@@ -73,7 +73,7 @@ const parseInline = (text: string): React.ReactNode[] => {
     const inlineCodeMatch = remaining.match(/^`([^`]+)`/);
     if (inlineCodeMatch) {
       parts.push(
-        <code key={key++} className="bg-gray-800 text-green-400 px-1.5 py-0.5 rounded font-mono text-xs border border-gray-700 text-glow-green">
+        <code key={key++} className="bg-gray-800 text-green-400 px-1.5 py-0.5 rounded font-mono text-sm border border-gray-700 text-glow-green">
           {inlineCodeMatch[1]}
         </code>
       );
@@ -153,12 +153,49 @@ export const RetroMarkdown = ({ content }: RetroMarkdownProps) => {
   let inCodeBlock = false;
   let codeBlockContent: string[] = [];
   let codeBlockLang = '';
+  let consecutiveEmptyLines = 0;
+  let paragraphLines: string[] = [];
+  let paragraphKey = 0;
+
+  // 检查是否是标题行
+  const isHeading = (line: string): boolean => {
+    return /^#{1,4}\s+/.test(line);
+  };
+
+  // 检查是否是列表项（有序或无序）
+  const isListItem = (line: string): { type: 'ordered' | 'unordered' | null; level: number } => {
+    const orderedMatch = line.match(/^(\d+)\.\s+/);
+    if (orderedMatch) {
+      return { type: 'ordered', level: 0 };
+    }
+    const unorderedMatch = line.match(/^([-\*])\s+/);
+    if (unorderedMatch) {
+      return { type: 'unordered', level: 0 };
+    }
+    return { type: null, level: 0 };
+  };
+
+  // 结束当前段落（如果有的话）
+  const finishParagraph = () => {
+    if (paragraphLines.length > 0) {
+      const paragraphText = paragraphLines.join(' ').trim();
+      if (paragraphText) {
+        elements.push(
+          <p key={`p-${paragraphKey++}`} className="opacity-90 break-words text-cyan-100 text-glow-cyan">
+            {parseInline(paragraphText)}
+          </p>
+        );
+      }
+      paragraphLines = [];
+    }
+  };
 
   while (i < lines.length) {
     const line = lines[i];
 
     // 处理代码块
     if (line.trim().startsWith('```')) {
+      finishParagraph();
       if (inCodeBlock) {
         // 结束代码块
         const codeContent = codeBlockContent.join('\n');
@@ -171,7 +208,7 @@ export const RetroMarkdown = ({ content }: RetroMarkdownProps) => {
               customStyle={{
                 margin: 0,
                 padding: '12px',
-                fontSize: '12px',
+                fontSize: '14px',
                 background: '#111827',
                 border: 'none',
               }}
@@ -189,10 +226,12 @@ export const RetroMarkdown = ({ content }: RetroMarkdownProps) => {
         codeBlockContent = [];
         inCodeBlock = false;
         codeBlockLang = '';
+        consecutiveEmptyLines = 0;
       } else {
         // 开始代码块
         codeBlockLang = line.trim().slice(3).trim();
         inCodeBlock = true;
+        consecutiveEmptyLines = 0;
       }
       i++;
       continue;
@@ -204,39 +243,115 @@ export const RetroMarkdown = ({ content }: RetroMarkdownProps) => {
       continue;
     }
 
+    // 处理 HTML 块 <html>...</html>
+    if (line.trim().startsWith('<html>')) {
+      finishParagraph();
+      let htmlContent = '';
+      
+      // 检查是否是单行：<html>...</html>
+      if (line.trim().endsWith('</html>')) {
+        // 单行 HTML 块
+        const match = line.trim().match(/<html>(.*?)<\/html>/s);
+        if (match) {
+          htmlContent = match[1];
+        }
+        i++;
+      } else {
+        // 多行 HTML 块，收集直到 </html>
+        const htmlLines: string[] = [line];
+        i++;
+        while (i < lines.length && !lines[i].trim().endsWith('</html>')) {
+          htmlLines.push(lines[i]);
+          i++;
+        }
+        if (i < lines.length) {
+          htmlLines.push(lines[i]); // 包含结束标签的行
+          i++;
+        }
+        // 提取 <html> 和 </html> 之间的内容
+        const fullHtml = htmlLines.join('\n');
+        const match = fullHtml.match(/<html>(.*?)<\/html>/s);
+        if (match) {
+          htmlContent = match[1];
+        }
+      }
+      
+      if (htmlContent) {
+        elements.push(
+          <div 
+            key={`html-${i}`} 
+            className="html-block"
+            style={{
+              fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+              fontSize: '16px',
+              lineHeight: '1.5',
+              color: '#000',
+              backgroundColor: 'transparent',
+              textShadow: 'none',
+              display: 'block',
+              margin: '0.5rem 0',
+              isolation: 'isolate',
+            }}
+            dangerouslySetInnerHTML={{ __html: htmlContent }}
+          />
+        );
+      }
+      consecutiveEmptyLines = 0;
+      continue;
+    }
+
     // 处理标题
     if (line.startsWith('# ')) {
+      finishParagraph();
       elements.push(
         <h1 key={i} className="text-2xl font-bold text-pink-500 border-b border-pink-500/50 pb-1 mt-4 shadow-[0_0_10px_rgba(236,72,153,0.3)] text-glow-pink">
           {parseInline(line.replace(/^#\s+/, ''))}
         </h1>
       );
+      consecutiveEmptyLines = 0;
       i++;
       continue;
     }
 
     if (line.startsWith('## ')) {
+      finishParagraph();
       elements.push(
         <h2 key={i} className="text-xl font-bold text-cyan-400 mt-3 text-glow-cyan">
           {parseInline(line.replace(/^##\s+/, ''))}
         </h2>
       );
+      consecutiveEmptyLines = 0;
       i++;
       continue;
     }
 
     if (line.startsWith('### ')) {
+      finishParagraph();
       elements.push(
         <h3 key={i} className="text-lg font-bold text-emerald-400 mt-2 text-glow-emerald">
           {parseInline(line.replace(/^###\s+/, ''))}
         </h3>
       );
+      consecutiveEmptyLines = 0;
+      i++;
+      continue;
+    }
+
+    if (line.startsWith('#### ')) {
+      finishParagraph();
+      elements.push(
+        <h4 key={i} className="text-base font-bold text-purple-400 mt-2 text-glow-purple">
+          {parseInline(line.replace(/^####\s+/, ''))}
+        </h4>
+      );
+      consecutiveEmptyLines = 0;
       i++;
       continue;
     }
 
     // 处理块级 LaTeX 公式 $$...$$
     if (line.trim().startsWith('$$') && line.trim().endsWith('$$') && line.trim().length > 4) {
+      finishParagraph();
       const formula = line.trim().slice(2, -2).trim();
       try {
         elements.push(
@@ -252,12 +367,14 @@ export const RetroMarkdown = ({ content }: RetroMarkdownProps) => {
           </div>
         );
       }
+      consecutiveEmptyLines = 0;
       i++;
       continue;
     }
 
     // 处理多行块级 LaTeX 公式（简单处理）
     if (line.trim() === '$$') {
+      finishParagraph();
       const formulaLines: string[] = [];
       i++;
       while (i < lines.length && lines[i].trim() !== '$$') {
@@ -280,49 +397,366 @@ export const RetroMarkdown = ({ content }: RetroMarkdownProps) => {
           </div>
         );
       }
+      consecutiveEmptyLines = 0;
       continue;
     }
 
-    // 处理列表
-    if (line.startsWith('- ')) {
+    // 处理有序列表
+    const orderedListMatch = line.match(/^(\d+)\.\s+(.+)$/);
+    if (orderedListMatch) {
+      finishParagraph();
+      const orderedListItems: React.ReactNode[] = [];
+      const orderedListStartIndex = i;
+      let listItemNumber = 1; // 维护列表编号
+      
+      // 收集有序列表项及其子段落
+      while (i < lines.length) {
+        const currentLine = lines[i];
+        const match = currentLine.match(/^(\d+)\.\s+(.+)$/);
+        
+        if (match) {
+          // 新的列表项开始
+          const itemContent: React.ReactNode[] = [];
+          itemContent.push(parseInline(match[2]));
+          
+          // 收集该列表项下方的段落内容，直到遇到边界
+          i++;
+          let itemConsecutiveEmpty = 0;
+          const itemParagraphLines: string[] = [];
+          
+          while (i < lines.length) {
+            const nextLine = lines[i];
+            
+            // 检查是否是代码块
+            if (nextLine.trim().startsWith('```')) {
+              // 遇到代码块，先处理已收集的段落
+              if (itemParagraphLines.length > 0) {
+                const paraText = itemParagraphLines.join(' ').trim();
+                if (paraText) {
+                  itemContent.push(
+                    <p key={`item-p-${i}`} className="opacity-90 break-words text-cyan-100 text-glow-cyan ml-4 mt-1">
+                      {parseInline(paraText)}
+                    </p>
+                  );
+                }
+                itemParagraphLines.length = 0;
+              }
+              // 代码块属于当前列表项，收集整个代码块
+              const codeBlockStart = i;
+              const codeBlockLines: string[] = [];
+              codeBlockLines.push(nextLine);
+              i++;
+              while (i < lines.length && !lines[i].trim().startsWith('```')) {
+                codeBlockLines.push(lines[i]);
+                i++;
+              }
+              if (i < lines.length) {
+                codeBlockLines.push(lines[i]); // 结束标记
+                i++;
+              }
+              const codeContent = codeBlockLines.slice(1, -1).join('\n');
+              const language = nextLine.trim().slice(3).trim() || 'text';
+              itemContent.push(
+                <div key={`item-code-${codeBlockStart}`} className="my-2 rounded overflow-hidden border border-gray-700 shadow-inner ml-4">
+                  <SyntaxHighlighter
+                    language={language}
+                    style={vscDarkPlus}
+                    customStyle={{
+                      margin: 0,
+                      padding: '12px',
+                      fontSize: '14px',
+                      background: '#111827',
+                      border: 'none',
+                    }}
+                    codeTagProps={{
+                      style: {
+                        fontFamily: 'monospace',
+                      },
+                    }}
+                    PreTag="div"
+                  >
+                    {codeContent}
+                  </SyntaxHighlighter>
+                </div>
+              );
+              itemConsecutiveEmpty = 0;
+              continue;
+            }
+            
+            // 检查是否是块边界
+            const nextListItem = isListItem(nextLine);
+            const nextHeading = isHeading(nextLine);
+            
+            // 遇到新的有序列表项（边界）
+            if (nextListItem.type === 'ordered') {
+              break;
+            }
+            
+            // 遇到无序列表项（边界）
+            if (nextListItem.type === 'unordered') {
+              break;
+            }
+            
+            // 遇到标题（边界）
+            if (nextHeading) {
+              break;
+            }
+            
+            // 遇到引用（边界）
+            if (nextLine.startsWith('> ')) {
+              break;
+            }
+            
+            // 遇到表格（边界）
+            if (nextLine.includes('|') && (nextLine.match(/\|/g) || []).length >= 2) {
+              break;
+            }
+            
+            // 遇到块级公式（边界）
+            if (nextLine.trim().startsWith('$$')) {
+              break;
+            }
+            
+            // 遇到分割线（边界）
+            if (/^[\s]*-{3,}[\s]*$/.test(nextLine)) {
+              break;
+            }
+            
+            // 遇到双空行（边界）
+            if (nextLine.trim() === '') {
+              itemConsecutiveEmpty++;
+              if (itemConsecutiveEmpty >= 2) {
+                i++; // 跳过这个空行
+                break;
+              }
+              // 单个空行，添加到段落
+              if (itemParagraphLines.length > 0) {
+                const paraText = itemParagraphLines.join(' ').trim();
+                if (paraText) {
+                  itemContent.push(
+                    <p key={`item-p-${i}`} className="opacity-90 break-words text-cyan-100 text-glow-cyan ml-4 mt-1">
+                      {parseInline(paraText)}
+                    </p>
+                  );
+                }
+                itemParagraphLines.length = 0;
+              }
+              i++;
+              continue;
+            }
+            
+            // 普通行，收集到段落
+            itemParagraphLines.push(nextLine);
+            itemConsecutiveEmpty = 0;
+            i++;
+          }
+          
+          // 处理最后收集的段落
+          if (itemParagraphLines.length > 0) {
+            const paraText = itemParagraphLines.join(' ').trim();
+            if (paraText) {
+              itemContent.push(
+                <p key={`item-p-final-${i}`} className="opacity-90 break-words text-cyan-100 text-glow-cyan ml-4 mt-1">
+                  {parseInline(paraText)}
+                </p>
+              );
+            }
+          }
+          
+          orderedListItems.push(
+            <li key={i} className="ml-4 text-emerald-400 text-glow-emerald">
+              {itemContent}
+            </li>
+          );
+          listItemNumber++;
+        } else {
+          // 不是列表项，停止收集
+          break;
+        }
+      }
+      
+      if (orderedListItems.length > 0) {
+        elements.push(
+          <ol key={orderedListStartIndex} className="list-decimal ml-4 my-2">
+            {orderedListItems}
+          </ol>
+        );
+      }
+      consecutiveEmptyLines = 0;
+      continue;
+    }
+
+    // 处理分割线（--- 三个或以上的连续 -）
+    if (/^[\s]*-{3,}[\s]*$/.test(line)) {
+      finishParagraph();
+      elements.push(
+        <hr key={i} className="my-4 border-0 border-t-2 border-cyan-500/50 shadow-[0_0_8px_rgba(6,182,212,0.3)]" />
+      );
+      consecutiveEmptyLines = 0;
+      i++;
+      continue;
+    }
+
+    // 处理无序列表
+    if (line.startsWith('- ') || line.startsWith('* ')) {
+      finishParagraph();
       elements.push(
         <li key={i} className="ml-4 text-emerald-400 list-disc marker:text-emerald-500 text-glow-emerald">
-          {parseInline(line.replace(/^-\s+/, ''))}
+          {parseInline(line.replace(/^[-\*]\s+/, ''))}
         </li>
       );
+      consecutiveEmptyLines = 0;
       i++;
       continue;
     }
 
     // 处理引用
     if (line.startsWith('> ')) {
+      finishParagraph();
       elements.push(
         <blockquote key={i} className="border-l-4 border-amber-500 pl-3 italic text-amber-200 bg-amber-900/20 py-1 text-glow-amber">
           {parseInline(line.replace(/^>\s+/, ''))}
         </blockquote>
       );
+      consecutiveEmptyLines = 0;
       i++;
       continue;
     }
 
-    // 处理空行
+    // 处理表格
+    // 检测表格行：包含 | 且至少有 2 个 |
+    if (line.includes('|') && (line.match(/\|/g) || []).length >= 2) {
+      finishParagraph();
+      const tableRows: string[] = [];
+      const tableStartIndex = i;
+      
+      // 收集表格行，直到遇到空行或非表格行
+      while (i < lines.length) {
+        const currentLine = lines[i];
+        // 如果是空行，停止收集
+        if (currentLine.trim() === '') {
+          break;
+        }
+        // 如果包含 | 且至少有 2 个 |，继续收集
+        if (currentLine.includes('|') && (currentLine.match(/\|/g) || []).length >= 2) {
+          tableRows.push(currentLine);
+          i++;
+        } else {
+          // 如果不是表格行，停止收集
+          break;
+        }
+      }
+
+      // 至少需要表头行和分隔行
+      if (tableRows.length >= 2) {
+        // 解析表头
+        const headerRow = tableRows[0];
+        const headerCells = headerRow.split('|').map(cell => cell.trim()).filter(cell => cell);
+        
+        // 解析分隔行，确定对齐方式
+        const separatorRow = tableRows[1];
+        const separatorCells = separatorRow.split('|').map(cell => cell.trim()).filter(cell => cell);
+        const alignments: ('left' | 'center' | 'right')[] = separatorCells.map(cell => {
+          const trimmed = cell.replace(/-/g, '');
+          if (trimmed.startsWith(':') && trimmed.endsWith(':')) {
+            return 'center';
+          } else if (trimmed.endsWith(':')) {
+            return 'right';
+          } else {
+            return 'left';
+          }
+        });
+
+        // 解析数据行
+        const dataRows = tableRows.slice(2).map(row => {
+          const cells = row.split('|').map(cell => cell.trim());
+          // 过滤掉首尾的空元素（如果行首或行尾有 |）
+          const filtered = cells.filter((cell, index, arr) => {
+            return !(index === 0 && cell === '' && arr.length > headerCells.length) &&
+                   !(index === arr.length - 1 && cell === '' && arr.length > headerCells.length);
+          });
+          return filtered;
+        });
+
+        // 渲染表格
+        elements.push(
+          <div key={tableStartIndex} className="my-4 overflow-x-auto">
+            <table className="border-collapse border border-cyan-500/30 w-full">
+              <thead>
+                <tr>
+                  {headerCells.map((cell, idx) => (
+                    <th
+                      key={idx}
+                      className={`border border-cyan-500/30 px-3 py-2 bg-cyan-900/20 text-cyan-300 font-bold text-glow-cyan ${
+                        alignments[idx] === 'center' ? 'text-center' :
+                        alignments[idx] === 'right' ? 'text-right' : 'text-left'
+                      }`}
+                    >
+                      {parseInline(cell)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {dataRows.map((row, rowIdx) => (
+                  <tr key={rowIdx} className="hover:bg-cyan-900/10">
+                    {row.map((cell, cellIdx) => (
+                      <td
+                        key={cellIdx}
+                        className={`border border-cyan-500/30 px-3 py-2 text-cyan-100 ${
+                          alignments[cellIdx] === 'center' ? 'text-center' :
+                          alignments[cellIdx] === 'right' ? 'text-right' : 'text-left'
+                        }`}
+                      >
+                        {parseInline(cell)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
+      consecutiveEmptyLines = 0;
+      continue;
+    }
+
+    // 处理空行：单个空行渲染为一个换行，两个以上空行渲染为一个空行
     if (line.trim() === '') {
-      elements.push(<br key={i} />);
+      finishParagraph();
+      consecutiveEmptyLines++;
+      if (consecutiveEmptyLines === 1) {
+        // 第一个空行：使用空段落但设置最小高度，使用 !m-0 强制覆盖 space-y-2 的间距
+        elements.push(
+          <p key={`p-br-${paragraphKey++}`} className="!m-0 h-0 leading-none">
+            <br />
+          </p>
+        );
+      } else if (consecutiveEmptyLines === 2) {
+        // 第二个空行：添加空段落来产生空行效果
+        elements.push(
+          <p key={`p-empty-${paragraphKey++}`} className="opacity-90 break-words text-cyan-100 text-glow-cyan">
+            &nbsp;
+          </p>
+        );
+      }
+      // 第三个及以上空行：忽略
       i++;
       continue;
     }
 
-    // 普通段落
-    elements.push(
-      <p key={i} className="opacity-90 break-words text-cyan-100 text-glow-cyan">
-        {parseInline(line)}
-      </p>
-    );
+    // 普通段落：收集到 paragraphLines 中，遇到空行或其他块级元素时再渲染
+    paragraphLines.push(line);
+    consecutiveEmptyLines = 0;
     i++;
   }
 
+  // 处理最后一段（如果有的话）
+  finishParagraph();
+
   return (
-    <div className="font-mono text-sm leading-relaxed text-cyan-100 space-y-2 selection:bg-pink-500 selection:text-white">
+    <div className="markdown-container font-mono text-sm leading-relaxed text-cyan-100 selection:bg-pink-500 selection:text-white">
       {elements}
     </div>
   );

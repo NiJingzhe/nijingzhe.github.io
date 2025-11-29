@@ -7,12 +7,18 @@ export const ArticleEditor = ({ content, onChange, isEditing }: ArticleEditorPro
     const contentWrapperRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [contentHeight, setContentHeight] = useState(0);
+    const scrollPositionRef = useRef<number>(0);
+    const prevIsEditingRef = useRef<boolean>(isEditing);
     
     const handleWheel = (e: React.WheelEvent) => {
         if (e.ctrlKey || e.metaKey) return;
         
         // 编辑模式下，直接阻止事件传播到 Canvas
         if (isEditing) {
+            // 实时保存 textarea 的滚动位置
+            if (textareaRef.current) {
+                scrollPositionRef.current = textareaRef.current.scrollTop;
+            }
             e.stopPropagation();
             return;
         }
@@ -25,6 +31,9 @@ export const ArticleEditor = ({ content, onChange, isEditing }: ArticleEditorPro
         }
         
         const { scrollTop, scrollHeight, clientHeight } = container;
+        // 实时保存阅读模式的滚动位置
+        scrollPositionRef.current = scrollTop;
+        
         const isAtTop = scrollTop <= 1; // 使用 <= 1 来处理浮点数精度问题
         const isAtBottom = scrollTop + clientHeight >= scrollHeight - 1;
         
@@ -41,6 +50,64 @@ export const ArticleEditor = ({ content, onChange, isEditing }: ArticleEditorPro
         // 正常滚动时，只阻止事件传播到 Canvas
         e.stopPropagation();
     };
+
+    // 实时保存滚动位置
+    useEffect(() => {
+        if (isEditing) {
+            const textarea = textareaRef.current;
+            if (!textarea) return;
+            
+            const handleScroll = () => {
+                scrollPositionRef.current = textarea.scrollTop;
+            };
+            
+            textarea.addEventListener('scroll', handleScroll);
+            return () => textarea.removeEventListener('scroll', handleScroll);
+        } else {
+            const container = scrollContainerRef.current;
+            if (!container) return;
+            
+            const handleScroll = () => {
+                scrollPositionRef.current = container.scrollTop;
+            };
+            
+            container.addEventListener('scroll', handleScroll);
+            return () => container.removeEventListener('scroll', handleScroll);
+        }
+    }, [isEditing]);
+
+    // 同步滚动位置：在编辑模式和阅读模式之间切换时
+    useEffect(() => {
+        const prevIsEditing = prevIsEditingRef.current;
+        prevIsEditingRef.current = isEditing;
+        
+        // 只在状态真正变化时执行
+        if (prevIsEditing === isEditing) return;
+        
+        if (isEditing) {
+            // 进入编辑模式：从阅读模式同步滚动位置到 textarea
+            // 使用 requestAnimationFrame 确保 textarea 已渲染
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    if (textareaRef.current) {
+                        textareaRef.current.scrollTop = scrollPositionRef.current;
+                    }
+                });
+            });
+        } else {
+            // 退出编辑模式：从 textarea 同步滚动位置到阅读模式
+            // 等待内容渲染完成后再设置滚动位置
+            const setScrollPosition = () => {
+                if (scrollContainerRef.current && contentWrapperRef.current) {
+                    scrollContainerRef.current.scrollTop = scrollPositionRef.current;
+                } else {
+                    // 如果元素还没准备好，继续等待
+                    requestAnimationFrame(setScrollPosition);
+                }
+            };
+            requestAnimationFrame(setScrollPosition);
+        }
+    }, [isEditing]);
 
     // 监听内容高度变化，更新 overlay 高度
     useEffect(() => {
