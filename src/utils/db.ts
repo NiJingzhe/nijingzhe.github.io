@@ -822,18 +822,22 @@ export const getEditLock = async (cardId: string): Promise<EditLock | null> => {
       .select('*')
       .eq('card_id', cardId)
       .gt('expires_at', new Date().toISOString())
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     if (error) {
-      if (error.code === 'PGRST116') {
-        // 未找到记录
+      // 406 错误可能是因为表不存在或权限问题，但不应该抛出
+      if (error.code === 'PGRST116' || error.code === 'PGRST301' || error.status === 406) {
+        // 未找到记录或表不存在
+        console.warn('Edit lock not found or table not accessible:', error.message);
         return null;
       }
       console.error('Error getting edit lock:', error);
-      throw error;
+      // 对于其他错误，也返回 null 而不是抛出，避免阻塞用户操作
+      return null;
     }
 
-    return data as EditLock;
+    return data as EditLock | null;
   } catch (error) {
     console.error('Error getting edit lock:', error);
     return null;
@@ -850,6 +854,11 @@ export const getActiveEditLocks = async (): Promise<EditLock[]> => {
       .order('locked_at', { ascending: false });
 
     if (error) {
+      // 406 错误可能是因为表不存在或权限问题
+      if (error.status === 406) {
+        console.warn('Edit locks table not accessible:', error.message);
+        return [];
+      }
       console.error('Error getting active edit locks:', error);
       return [];
     }

@@ -27,8 +27,8 @@ export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEd
     const isButton = target.closest('button') !== null;
     const isResizeHandle = target.classList.contains('resize-handle') || target.closest('.resize-handle') !== null;
     
-    // 如果锁定，禁用调整大小和拖动
-    if (item.locked) {
+    // 如果锁定或被他人编辑，禁用调整大小和拖动
+    if (item.locked || isBeingEdited) {
       return;
     }
     
@@ -48,8 +48,8 @@ export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEd
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    // 如果锁定，禁用调整大小和拖动
-    if (item.locked) {
+    // 如果锁定或被他人编辑，禁用调整大小和拖动
+    if (item.locked || isBeingEdited) {
       return;
     }
     
@@ -158,6 +158,7 @@ export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEd
         transition: (isDragging || isResizing) 
           ? 'none' 
           : 'transform 0.2s ease-out',
+        pointerEvents: isBeingEdited ? 'none' : 'auto',
       }}
       className={`absolute flex flex-col bg-gray-900/30 backdrop-blur-md border ${styles.border} ${styles.shadow} transition-shadow duration-300 ${isBeingEdited ? 'ring-2 ring-yellow-400 animate-pulse' : ''}`}
       onPointerDown={handlePointerDown}
@@ -232,7 +233,7 @@ export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEd
       </div>
       
       {/* Resize handle */}
-      {!item.locked && (
+      {!item.locked && !isBeingEdited && (
         <div 
           className={`resize-handle absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize ${styles.headerBg} opacity-50 hover:opacity-100 rounded-tl-lg transition-opacity z-30`}
         />

@@ -447,7 +447,7 @@ export const Canvas = ({
                 isSelected={selectedId === item.id}
                 forceEditing={editingCardId === item.id ? true : undefined}
                 onEditChange={(editing) => onEditChange?.(item.id, editing)}
-                allowDrag={vimMode === 'normal' && !item.locked}
+                allowDrag={vimMode === 'normal' && !item.locked && !isBeingEdited}
                 onDelete={onDeleteItem}
                 onUnlock={onUnlockItem}
                 isBeingEdited={isBeingEdited}
