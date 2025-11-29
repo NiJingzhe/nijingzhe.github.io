@@ -11,7 +11,7 @@ import { UnlockConfirmModal } from './components/UnlockConfirmModal';
 import { fetchGitHubRepoInfo } from './utils/githubApi';
 import { loadCards, saveCard, deleteCard, loadDrawings, saveDrawing, deleteDrawing, getTotalVisits, getTodayVisits } from './utils/db';
 import { initializeUser, updateSessionHeartbeat, setUserName } from './utils/user';
-import { subscribeOnlineCount } from './utils/realtime';
+import { subscribeOnlineCount, subscribeVisits } from './utils/realtime';
 import type { CanvasItemData, CanvasState, DrawPath, DrawMode, VimMode } from './types';
 import type { GitHubCardData } from './components/GitHubCard';
 
@@ -192,6 +192,7 @@ const App = () => {
 
     let isMounted = true;
     let unsubscribe: (() => void) | null = null;
+    let unsubscribeVisits: (() => void) | null = null;
 
     const initUserAndStats = async () => {
       try {
@@ -218,7 +219,7 @@ const App = () => {
           }, 30 * 1000);
         }
 
-        // 3. 加载访问量统计
+        // 3. 加载访问量统计（初始加载）
         const [total, today] = await Promise.all([
           getTotalVisits(),
           getTodayVisits()
@@ -232,6 +233,13 @@ const App = () => {
         unsubscribe = subscribeOnlineCount((count) => {
           console.log('Online count updated:', count, 'isMounted:', isMounted); // 调试日志
           setOnlineCount(count); // 直接更新，不检查 isMounted（因为回调可能在组件卸载后执行）
+        });
+
+        // 5. 订阅访问量变化
+        const unsubscribeVisits = subscribeVisits(({ total: newTotal, today: newToday }) => {
+          console.log('Visits updated:', { total: newTotal, today: newToday }); // 调试日志
+          setTotalVisits(newTotal);
+          setTodayVisits(newToday);
         });
 
         // 5. 定期刷新访问量（每 5 分钟）
@@ -260,6 +268,9 @@ const App = () => {
       isMounted = false;
       if (unsubscribe) {
         unsubscribe();
+      }
+      if (unsubscribeVisits) {
+        unsubscribeVisits();
       }
       if (heartbeatIntervalRef.current) {
         clearInterval(heartbeatIntervalRef.current);
