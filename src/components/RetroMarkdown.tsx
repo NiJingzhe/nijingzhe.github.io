@@ -26,24 +26,31 @@ const sanitizeHtml = (html: string): string => {
   // 处理编码的 javascript:（如 &#106;avascript:）
   sanitized = sanitized.replace(/\s+(href|src|action|formaction|background|cite|codebase|data|dynsrc|lowsrc|manifest|poster|profile)\s*=\s*["']?\s*&#\d+;?[a-z]*script:/gi, '');
   
-  // 4. 移除危险的标签（iframe, object, embed, form 等可能执行代码的标签）
+  // 4. 移除全局样式标签（style 和 stylesheet link，会影响整个应用）
+  sanitized = sanitized.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
+  sanitized = sanitized.replace(/<link\b[^>]*rel\s*=\s*["']?\s*stylesheet[^>]*>/gi, '');
+  
+  // 5. 移除危险的标签（iframe, object, embed, form 等可能执行代码的标签）
   sanitized = sanitized.replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, '');
   sanitized = sanitized.replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, '');
   sanitized = sanitized.replace(/<embed\b[^>]*>/gi, '');
   sanitized = sanitized.replace(/<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi, '');
   
-  // 5. 移除 style 属性中的 javascript: 和 expression()
+  // 6. 移除 <base> 标签（会影响相对 URL，可能造成安全问题）
+  sanitized = sanitized.replace(/<base\b[^>]*>/gi, '');
+  
+  // 7. 移除 style 属性中的 javascript: 和 expression()
   sanitized = sanitized.replace(/\s+style\s*=\s*["'][^"']*javascript:[^"']*["']/gi, '');
   sanitized = sanitized.replace(/\s+style\s*=\s*["'][^"']*expression\s*\([^"']*["']/gi, '');
   
-  // 6. 移除 data: URL 中的危险内容（防止 data:text/html 等可执行内容）
+  // 8. 移除 data: URL 中的危险内容（防止 data:text/html 等可执行内容）
   sanitized = sanitized.replace(/\s+(href|src|action)\s*=\s*["']?\s*data:\s*text\/html/gi, '');
   sanitized = sanitized.replace(/\s+(href|src|action)\s*=\s*["']?\s*data:\s*text\/javascript/gi, '');
   
-  // 7. 移除 <link> 标签中的 javascript:（防止通过 link 标签执行代码）
+  // 9. 移除 <link> 标签中的 javascript:（防止通过 link 标签执行代码）
   sanitized = sanitized.replace(/<link\b[^>]*href\s*=\s*["']?\s*javascript:[^>]*>/gi, '');
   
-  // 8. 移除 <meta> 标签中的 http-equiv="refresh"（可能用于重定向到恶意页面）
+  // 10. 移除 <meta> 标签中的 http-equiv="refresh"（可能用于重定向到恶意页面）
   sanitized = sanitized.replace(/<meta\b[^>]*http-equiv\s*=\s*["']?\s*refresh[^>]*>/gi, '');
   
   return sanitized;
