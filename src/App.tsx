@@ -11,7 +11,7 @@ import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { UnlockConfirmModal } from './components/UnlockConfirmModal';
 import { EditConflictModal } from './components/EditConflictModal';
 import { fetchGitHubRepoInfo } from './utils/githubApi';
-import { loadCards, saveCard, deleteCard, loadDrawings, saveDrawing, deleteDrawing, getTotalVisits, getTodayVisits, upsertCursor, getActiveCursors, getVisitorByUid, type Cursor } from './utils/db';
+import { loadCards, saveCard, deleteCard, loadDrawings, saveDrawing, deleteDrawing, getTotalVisits, getTodayVisits, upsertCursor, getActiveCursors, getVisitorByUid, upsertSession, type Cursor } from './utils/db';
 import { initializeUser, updateSessionHeartbeat, setUserName } from './utils/user';
 import { subscribeOnlineCount, subscribeVisits, subscribeCursors, subscribeEditLocks, subscribeCards, type EditLockInfo } from './utils/realtime/index';
 import { acquireLock, renewLock, releaseLock, isLockHeldByCurrentUser, isCardLocked, getLockInfo } from './utils/editLock';
@@ -109,6 +109,7 @@ const App = () => {
   const lastCursorUpdateRef = useRef<{ x: number; y: number; canvasX: number; canvasY: number } | null>(null);
   const canvasScaleRef = useRef<number>(canvas.scale);
   const cursorPositionRef = useRef<{ x: number; y: number; canvasX: number; canvasY: number } | null>(null);
+  const sessionIdRef = useRef<string | null>(null); // 用于在定时器中访问最新的 sessionId
 
   // 编辑锁相关状态
   const [editLocks, setEditLocks] = useState<Map<string, EditLockInfo>>(new Map());
@@ -242,6 +243,7 @@ const App = () => {
         // 总是更新状态（初始化时组件应该已挂载）
         setUserId(uid);
         setSessionId(sid);
+        sessionIdRef.current = sid; // 同步更新 ref
         setUserNameState(uname);
 
         // 2. 启动心跳定时器（每 30 秒）
@@ -251,6 +253,7 @@ const App = () => {
               const newSessionId = await updateSessionHeartbeat(uid);
               if (isMounted && newSessionId) {
                 setSessionId(newSessionId);
+                sessionIdRef.current = newSessionId; // 同步更新 ref
               }
             } catch (error) {
               console.error('Heartbeat failed:', error);
@@ -390,11 +393,12 @@ const App = () => {
 
         // 9. 启动光标位置更新定时器（每 100ms 更新一次）
         cursorUpdateTimerRef.current = setInterval(async () => {
-          // 使用 ref 获取最新的 cursorPosition 和 canvas.scale
+          // 使用 ref 获取最新的 cursorPosition、canvas.scale 和 sessionId
           const currentPosition = cursorPositionRef.current;
           const currentScale = canvasScaleRef.current;
+          const currentSessionId = sessionIdRef.current;
           
-          if (currentPosition && uid && sid) {
+          if (currentPosition && uid && currentSessionId) {
             const { x, y, canvasX, canvasY } = currentPosition;
             
             // 只有当位置发生变化时才更新
@@ -402,10 +406,29 @@ const App = () => {
             if (!last || last.x !== x || last.y !== y || 
                 last.canvasX !== canvasX || last.canvasY !== canvasY) {
               try {
-                await upsertCursor(uid, sid, x, y, canvasX, canvasY, currentScale);
+                await upsertCursor(uid, currentSessionId, x, y, canvasX, canvasY, currentScale);
                 lastCursorUpdateRef.current = { x, y, canvasX, canvasY };
-              } catch (error) {
-                console.error('Error updating cursor:', error);
+              } catch (error: any) {
+                // 处理外键约束错误：session 不存在
+                if (error?.code === '23503' && error?.message?.includes('sessions')) {
+                  console.warn('Session not found, recreating session and retrying cursor update');
+                  try {
+                    // 重新创建 session
+                    const newSessionId = await upsertSession(uid);
+                    if (newSessionId && isMounted) {
+                      // 更新 sessionId 状态和 ref
+                      setSessionId(newSessionId);
+                      sessionIdRef.current = newSessionId;
+                      // 使用新的 sessionId 重试 cursor 更新
+                      await upsertCursor(uid, newSessionId, x, y, canvasX, canvasY, currentScale);
+                      lastCursorUpdateRef.current = { x, y, canvasX, canvasY };
+                    }
+                  } catch (retryError) {
+                    console.error('Error recreating session and updating cursor:', retryError);
+                  }
+                } else {
+                  console.error('Error updating cursor:', error);
+                }
               }
             }
           }
