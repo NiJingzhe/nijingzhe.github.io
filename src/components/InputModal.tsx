@@ -23,6 +23,24 @@ export const InputModal = ({
     const [showGlitch, setShowGlitch] = useState(true);
     const [showContent, setShowContent] = useState(false);
 
+    // 优化显示逻辑：在组件挂载时立即显示内容，避免等待 Glitch 动画完成
+    useEffect(() => {
+        // 使用 requestAnimationFrame 确保状态更新在下一帧执行，避免批处理延迟
+        const rafId = requestAnimationFrame(() => {
+            setShowContent(true);
+        });
+        return () => cancelAnimationFrame(rafId);
+    }, []);
+
+    // 处理 Glitch 动画完成回调
+    const handleGlitchComplete = () => {
+        // 使用 requestAnimationFrame 确保状态更新及时执行，避免 React 批处理延迟
+        requestAnimationFrame(() => {
+            setShowGlitch(false);
+            setShowContent(true);
+        });
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!onSubmit) return;
@@ -112,10 +130,7 @@ export const InputModal = ({
 
     return (
         <>
-            {showGlitch && <GlitchTransition onComplete={() => {
-                setShowGlitch(false);
-                setShowContent(true);
-            }} />}
+            {showGlitch && <GlitchTransition onComplete={handleGlitchComplete} />}
             <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm transition-opacity duration-75 ${showContent ? 'opacity-100' : 'opacity-0'}`} style={{ cursor: 'auto' }}>
                 <div className={`bg-black border ${config.border} p-6 w-96 shadow-[0_0_50px_rgba(0,0,0,0.8)] relative`}>
                     <div className={`flex items-center gap-2 mb-6 ${config.color} ${config.glow}`}>
