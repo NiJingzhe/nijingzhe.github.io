@@ -28,6 +28,7 @@ export const Canvas = ({
 }: CanvasProps) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState<Array<{ x: number; y: number }>>([]);
+  const currentPathRef = useRef<Array<{ x: number; y: number }>>([]);
   const [erasedPathIds, setErasedPathIds] = useState<Set<number | string>>(new Set());
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ screenX: number; screenY: number; canvasX: number; canvasY: number } | null>(null);
@@ -172,7 +173,7 @@ export const Canvas = ({
       e.stopPropagation();
       
       if (drawMode === 'erase') {
-        // 橡皮擦模式：收集要删除的路径（使用 drawWidth 作为橡皮擦半径）
+        // 橡皮擦模式：立即删除路径（使用 drawWidth 作为橡皮擦半径）
         const pathsToRemove: (number | string)[] = [];
         drawPaths.forEach(path => {
           if (isPointNearPath(worldPos.x, worldPos.y, path, drawWidth) && !erasedPathIds.has(path.id)) {
@@ -180,6 +181,8 @@ export const Canvas = ({
           }
         });
         if (pathsToRemove.length > 0) {
+          // 立即删除路径，而不是等到 pointerUp
+          pathsToRemove.forEach(id => onRemoveDrawPath(id));
           setErasedPathIds(prev => {
             const newSet = new Set(prev);
             pathsToRemove.forEach(id => newSet.add(id));
@@ -189,8 +192,29 @@ export const Canvas = ({
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       } else if (drawMode === 'draw') {
         // 绘制模式：开始绘制
+        // 如果上一笔还在绘制状态（可能因为快速连续绘制），先强制结束
+        if (isDrawing) {
+          const pathToSave = currentPathRef.current.length > 1 ? currentPathRef.current : currentPath;
+          if (pathToSave.length > 1) {
+            const pathId = Date.now();
+            const filteredPoints = filterPath(pathToSave);
+            onAddDrawPath({
+              id: pathId,
+              points: filteredPoints,
+              color: drawColor,
+              width: drawWidth
+            });
+          }
+          // 重置状态
+          setIsDrawing(false);
+          setCurrentPath([]);
+          currentPathRef.current = [];
+        }
+        // 开始新的一笔
         setIsDrawing(true);
-        setCurrentPath([worldPos]);
+        const newPath = [worldPos];
+        setCurrentPath(newPath);
+        currentPathRef.current = newPath;
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       }
       return;
@@ -289,7 +313,7 @@ export const Canvas = ({
     const isPressing = e.buttons === 1 || e.pointerType === 'touch';
     
     if (drawMode === 'erase' && isPressing) {
-      // 橡皮擦模式：持续收集要删除的路径（使用 drawWidth 作为橡皮擦半径）
+      // 橡皮擦模式：立即删除路径（使用 drawWidth 作为橡皮擦半径）
       e.preventDefault();
       e.stopPropagation();
       const pathsToRemove: (number | string)[] = [];
@@ -299,6 +323,8 @@ export const Canvas = ({
         }
       });
       if (pathsToRemove.length > 0) {
+        // 立即删除路径，而不是等到 pointerUp
+        pathsToRemove.forEach(id => onRemoveDrawPath(id));
         setErasedPathIds(prev => {
           const newSet = new Set(prev);
           pathsToRemove.forEach(id => newSet.add(id));
@@ -315,7 +341,9 @@ export const Canvas = ({
         if (lastPoint && Math.abs(lastPoint.x - worldPos.x) < 0.1 && Math.abs(lastPoint.y - worldPos.y) < 0.1) {
           return prev;
         }
-        return [...prev, worldPos];
+        const newPath = [...prev, worldPos];
+        currentPathRef.current = newPath;
+        return newPath;
       });
     }
   };
@@ -360,12 +388,10 @@ export const Canvas = ({
     }
     
     if (drawMode === 'erase') {
-      // 橡皮擦模式：一次性删除所有收集到的路径
+      // 橡皮擦模式：清理状态（路径已经在 move 时立即删除了）
       e.preventDefault();
-      if (erasedPathIds.size > 0) {
-        erasedPathIds.forEach(id => onRemoveDrawPath(id));
-        setErasedPathIds(new Set());
-      }
+      // 清空已擦除路径的跟踪集合
+      setErasedPathIds(new Set());
       if (target.hasPointerCapture(e.pointerId)) {
         target.releasePointerCapture(e.pointerId);
       }
@@ -375,21 +401,31 @@ export const Canvas = ({
     // 绘制模式：结束当前绘制
     if (drawMode === 'draw') {
       e.preventDefault();
-      if (isDrawing && currentPath.length > 1) {
-        const pathId = Date.now();
-        // 应用滤波：平滑轨迹并减少点的数量
-        const filteredPoints = filterPath(currentPath);
-        onAddDrawPath({
-          id: pathId,
-          points: filteredPoints,
-          color: drawColor,
-          width: drawWidth
-        });
+      
+      // 只有在真正在绘制时才保存路径
+      if (isDrawing) {
+        // 使用 ref 中的最新路径，确保获取到完整的路径
+        const pathToSave = currentPathRef.current.length > 0 ? currentPathRef.current : currentPath;
+        
+        if (pathToSave.length > 1) {
+          const pathId = Date.now();
+          // 应用滤波：平滑轨迹并减少点的数量
+          const filteredPoints = filterPath(pathToSave);
+          onAddDrawPath({
+            id: pathId,
+            points: filteredPoints,
+            color: drawColor,
+            width: drawWidth
+          });
+        }
       }
       
-      // 确保状态重置和指针捕获释放，即使 isDrawing 为 false 也要释放
+      // 重置状态，确保下一笔可以立即开始
       setIsDrawing(false);
       setCurrentPath([]);
+      currentPathRef.current = [];
+      
+      // 释放指针捕获
       if (target.hasPointerCapture(e.pointerId)) {
         target.releasePointerCapture(e.pointerId);
       }
