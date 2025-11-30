@@ -112,8 +112,11 @@ export const Canvas = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    // 只在主按钮（左键或触控板点击）或触摸（button === -1）时开始
-    if (e.button !== 0 && e.button !== -1 && e.button !== undefined) return;
+    // 只在主按钮（左键或触控板点击）或触摸时开始
+    // 对于触摸事件，button 可能是 undefined 或 -1，需要允许
+    const isTouch = e.pointerType === 'touch';
+    const isMousePrimary = e.button === 0;
+    if (!isTouch && !isMousePrimary && e.button !== undefined) return;
     
     // 记录当前指针位置
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -282,7 +285,10 @@ export const Canvas = ({
     
     const worldPos = screenToWorld(e.clientX, e.clientY);
     
-    if (drawMode === 'erase' && e.buttons === 1) {
+    // 检查是否正在按下（鼠标或触摸）
+    const isPressing = e.buttons === 1 || e.pointerType === 'touch';
+    
+    if (drawMode === 'erase' && isPressing) {
       // 橡皮擦模式：持续收集要删除的路径（使用 drawWidth 作为橡皮擦半径）
       e.preventDefault();
       e.stopPropagation();
@@ -413,7 +419,8 @@ export const Canvas = ({
         ref={containerRef}
         className="absolute inset-0 w-full h-full z-10"
         style={{ 
-          pointerEvents: drawMode !== 'off' || (vimMode === 'normal' && onUpdateCanvas) ? 'auto' : 'none'
+          pointerEvents: drawMode !== 'off' || (vimMode === 'normal' && onUpdateCanvas) ? 'auto' : 'none',
+          touchAction: 'none' // 禁用默认触摸行为，允许自定义拖动和缩放
         }}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}

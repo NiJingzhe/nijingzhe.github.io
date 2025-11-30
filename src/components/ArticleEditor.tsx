@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, memo } from 'react';
+import { useRef, useEffect, useState, memo, useCallback } from 'react';
 import { RetroMarkdown } from './RetroMarkdown';
 import type { ArticleEditorProps } from '../types';
 
@@ -10,7 +10,7 @@ const ArticleEditorComponent = ({ content, onChange, isEditing }: ArticleEditorP
     const scrollPositionRef = useRef<number>(0);
     const prevIsEditingRef = useRef<boolean>(isEditing);
     
-    const handleWheel = (e: React.WheelEvent) => {
+    const handleWheel = useCallback((e: WheelEvent) => {
         if (e.ctrlKey || e.metaKey) return;
         
         // 编辑模式下，直接阻止事件传播到 Canvas
@@ -42,14 +42,33 @@ const ArticleEditorComponent = ({ content, onChange, isEditing }: ArticleEditorP
         
         // 如果滚动到边界且继续向边界方向滚动（惯性滚动），阻止默认行为和事件传播
         if ((isAtTop && scrollingUp) || (isAtBottom && scrollingDown)) {
-            e.preventDefault();
+            if (e.cancelable) {
+                e.preventDefault();
+            }
             e.stopPropagation();
             return;
         }
         
         // 正常滚动时，只阻止事件传播到 Canvas
         e.stopPropagation();
-    };
+    }, [isEditing]);
+
+    // 添加 wheel 事件监听器（使用原生事件以支持 preventDefault）
+    useEffect(() => {
+        if (isEditing) {
+            const textarea = textareaRef.current;
+            if (!textarea) return;
+            
+            textarea.addEventListener('wheel', handleWheel, { passive: false });
+            return () => textarea.removeEventListener('wheel', handleWheel);
+        } else {
+            const container = scrollContainerRef.current;
+            if (!container) return;
+            
+            container.addEventListener('wheel', handleWheel, { passive: false });
+            return () => container.removeEventListener('wheel', handleWheel);
+        }
+    }, [isEditing, handleWheel]);
 
     // 实时保存滚动位置
     useEffect(() => {
@@ -139,7 +158,6 @@ const ArticleEditorComponent = ({ content, onChange, isEditing }: ArticleEditorP
                     className="w-full h-full bg-gray-950/30 backdrop-blur-md text-emerald-400 font-mono text-sm p-4 outline-none resize-none border-none focus:ring-1 focus:ring-emerald-500/50 z-30 relative text-glow-emerald"
                     value={content}
                     onChange={(e) => onChange(e.target.value)}
-                    onWheel={handleWheel}
                     spellCheck={false}
                     onPointerDown={(e) => e.stopPropagation()}
                     autoFocus
@@ -155,8 +173,6 @@ const ArticleEditorComponent = ({ content, onChange, isEditing }: ArticleEditorP
                 ref={scrollContainerRef}
                 className="p-5 h-full overflow-y-auto bg-gray-950/30 backdrop-blur-md text-gray-100 scrollbar-thin scrollbar-thumb-pink-600 scrollbar-track-gray-900 cursor-text z-30 relative"
                 data-scrollable
-                onWheel={handleWheel}
-                // 不阻止事件传播，让父组件可以处理点击焦点
             >
                 <div ref={contentWrapperRef} className="relative">
                     <RetroMarkdown content={content} />
