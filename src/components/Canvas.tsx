@@ -372,25 +372,28 @@ export const Canvas = ({
       return;
     }
     
-    if (!isDrawing) return;
-    
-    e.preventDefault();
-    if (currentPath.length > 1) {
-      const pathId = Date.now();
-      // 应用滤波：平滑轨迹并减少点的数量
-      const filteredPoints = filterPath(currentPath);
-      onAddDrawPath({
-        id: pathId,
-        points: filteredPoints,
-        color: drawColor,
-        width: drawWidth
-      });
-    }
-    
-    setIsDrawing(false);
-    setCurrentPath([]);
-    if (target.hasPointerCapture(e.pointerId)) {
-      target.releasePointerCapture(e.pointerId);
+    // 绘制模式：结束当前绘制
+    if (drawMode === 'draw') {
+      e.preventDefault();
+      if (isDrawing && currentPath.length > 1) {
+        const pathId = Date.now();
+        // 应用滤波：平滑轨迹并减少点的数量
+        const filteredPoints = filterPath(currentPath);
+        onAddDrawPath({
+          id: pathId,
+          points: filteredPoints,
+          color: drawColor,
+          width: drawWidth
+        });
+      }
+      
+      // 确保状态重置和指针捕获释放，即使 isDrawing 为 false 也要释放
+      setIsDrawing(false);
+      setCurrentPath([]);
+      if (target.hasPointerCapture(e.pointerId)) {
+        target.releasePointerCapture(e.pointerId);
+      }
+      return;
     }
   };
 
