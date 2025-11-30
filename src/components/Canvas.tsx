@@ -112,8 +112,8 @@ export const Canvas = ({
   };
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    // 只在主按钮（左键或触控板点击）时开始
-    if (e.button !== 0 && e.button !== undefined) return;
+    // 只在主按钮（左键或触控板点击）或触摸（button === -1）时开始
+    if (e.button !== 0 && e.button !== -1 && e.button !== undefined) return;
     
     // 记录当前指针位置
     activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -129,6 +129,10 @@ export const Canvas = ({
       const distance = getDistance(p1.x, p1.y, p2.x, p2.y);
       const center = getCenterPoint(p1, p2);
       
+      // 立即取消拖拽状态，避免单指拖动和双指缩放冲突
+      setIsDragging(false);
+      setDragStart(null);
+      
       setIsPinching(true);
       setPinchStart({
         distance,
@@ -138,10 +142,6 @@ export const Canvas = ({
         canvasY: canvas.y,
         scale: canvas.scale
       });
-      
-      // 取消拖拽状态
-      setIsDragging(false);
-      setDragStart(null);
       
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       return;
@@ -197,6 +197,8 @@ export const Canvas = ({
     if (drawMode === 'off' && onUpdateCanvas && vimMode === 'normal') {
       e.preventDefault();
       e.stopPropagation();
+      // 触摸设备可能会很快添加第二个指针，稍微延迟判断是否真的是单指拖动
+      // 但为了响应速度，我们先记录状态，如果检测到第二个指针会立即切换
       setIsDragging(true);
       setDragStart({ 
         screenX: e.clientX, 
@@ -214,8 +216,8 @@ export const Canvas = ({
       activePointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     }
     
-    // 在拖动或缩放时，通知父组件更新光标位置
-    if ((isDragging || isPinching) && onCursorMove) {
+    // 始终通知父组件更新光标位置（拖动、缩放、绘图模式都需要）
+    if (onCursorMove) {
       onCursorMove(e.clientX, e.clientY);
     }
     
@@ -262,10 +264,17 @@ export const Canvas = ({
       e.stopPropagation();
       const deltaX = e.clientX - dragStart.screenX;
       const deltaY = e.clientY - dragStart.screenY;
-      onUpdateCanvas({
-        x: dragStart.canvasX + deltaX,
-        y: dragStart.canvasY + deltaY
-      });
+      
+      // 触摸设备添加最小移动阈值，避免轻微抖动
+      const isTouchDevice = e.pointerType === 'touch';
+      const minMoveThreshold = isTouchDevice ? 2 : 0;
+      
+      if (Math.abs(deltaX) > minMoveThreshold || Math.abs(deltaY) > minMoveThreshold) {
+        onUpdateCanvas({
+          x: dragStart.canvasX + deltaX,
+          y: dragStart.canvasY + deltaY
+        });
+      }
       return;
     }
 
@@ -384,10 +393,11 @@ export const Canvas = ({
     <>
       {/* Infinite Grid */}
       <div 
-        className="absolute inset-0 pointer-events-none transition-transform duration-75 ease-out"
+        className="absolute inset-0 pointer-events-none"
         style={{
           transform: `translate(${canvas.x}px, ${canvas.y}px) scale(${canvas.scale})`,
           transformOrigin: '0 0',
+          willChange: 'transform',
         }}
       >
         <div className="absolute -top-[5000px] -left-[5000px] w-[10000px] h-[10000px] opacity-30"
@@ -425,14 +435,42 @@ export const Canvas = ({
 
       {/* Content */}
       <div 
-        className="absolute inset-0 w-full h-full transform-gpu transition-transform duration-75 ease-out z-20"
+        className="absolute inset-0 w-full h-full transform-gpu z-20"
         style={{
           transform: `translate(${canvas.x}px, ${canvas.y}px) scale(${canvas.scale})`,
           transformOrigin: '0 0',
           pointerEvents: 'none',
+          willChange: 'transform',
         }}
       >
-        {items.filter(i => i.visible !== false).map(item => {
+        {items.filter(i => {
+          // 基础过滤：移除隐藏的卡片
+          if (i.visible === false) return false;
+          
+          // 视口裁剪：只渲染可见区域内的卡片（带边距）
+          if (containerRef.current) {
+            const rect = containerRef.current.getBoundingClientRect();
+            const margin = 200; // 额外渲染边距，确保平滑过渡
+            
+            // 计算卡片在屏幕上的位置和尺寸
+            const itemScreenX = i.x * canvas.scale + canvas.x;
+            const itemScreenY = i.y * canvas.scale + canvas.y;
+            const itemScreenWidth = i.width * canvas.scale;
+            const itemScreenHeight = i.height * canvas.scale;
+            
+            // 检查是否在视口内（使用 AABB 碰撞检测）
+            const isVisible = (
+              itemScreenX + itemScreenWidth > -margin &&
+              itemScreenX < rect.width + margin &&
+              itemScreenY + itemScreenHeight > -margin &&
+              itemScreenY < rect.height + margin
+            );
+            
+            return isVisible;
+          }
+          
+          return true;
+        }).map(item => {
           const lockInfo = editLocks?.get(item.id);
           const isBeingEdited = lockInfo !== undefined && lockInfo.visitor_uid !== currentUserId;
           const editingBy = isBeingEdited ? lockInfo.uname : null;

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Github, Image as ImageIcon } from 'lucide-react';
 import type { InputModalProps } from '../types';
+import { GlitchTransition } from './GlitchTransition';
 
 export const InputModal = ({ 
     type, 
@@ -19,6 +20,8 @@ export const InputModal = ({
     const [value, setValue] = useState('');
     const [title, setTitle] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [showGlitch, setShowGlitch] = useState(true);
+    const [showContent, setShowContent] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -108,18 +111,68 @@ export const InputModal = ({
     const IconComponent = config.icon;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-            <div className={`bg-black border ${config.border} p-6 w-96 shadow-[0_0_50px_rgba(0,0,0,0.8)] relative`}>
-                <div className={`flex items-center gap-2 mb-6 ${config.color} ${config.glow}`}>
-                    <IconComponent className="animate-pulse" />
-                    <h2 className="text-xl font-bold font-mono">{config.title}</h2>
-                </div>
-                
-                {customContent ? (
-                    <>
-                        {customContent}
-                        <div className="flex gap-2 mt-6">
-                            {showCancel && (
+        <>
+            {showGlitch && <GlitchTransition onComplete={() => {
+                setShowGlitch(false);
+                setShowContent(true);
+            }} />}
+            <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm transition-opacity duration-75 ${showContent ? 'opacity-100' : 'opacity-0'}`} style={{ cursor: 'auto' }}>
+                <div className={`bg-black border ${config.border} p-6 w-96 shadow-[0_0_50px_rgba(0,0,0,0.8)] relative`}>
+                    <div className={`flex items-center gap-2 mb-6 ${config.color} ${config.glow}`}>
+                        <IconComponent className="animate-pulse" />
+                        <h2 className="text-xl font-bold font-mono">{config.title}</h2>
+                    </div>
+                    
+                    {customContent ? (
+                        <>
+                            {customContent}
+                            <div className="flex gap-2 mt-6">
+                                {showCancel && (
+                                    <button 
+                                        type="button" 
+                                        onClick={onClose} 
+                                        disabled={isSubmitting}
+                                        className="flex-1 py-2 text-xs font-mono border border-gray-600 hover:bg-gray-800 text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed text-glow-white"
+                                    >
+                                        取消
+                                    </button>
+                                )}
+                                <button 
+                                    type="button"
+                                    onClick={handleConfirm}
+                                    disabled={isSubmitting}
+                                    className={`flex-1 py-2 text-xs font-mono font-bold bg-opacity-20 hover:bg-opacity-40 border ${config.border} ${config.color} ${config.glow} uppercase disabled:opacity-50 disabled:cursor-not-allowed`}
+                                >
+                                    {confirmText}
+                                </button>
+                            </div>
+                        </>
+                    ) : (
+                        <form onSubmit={handleSubmit} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-mono text-gray-500 mb-1 text-glow-white">TITLE_TAG (可选)</label>
+                                <input 
+                                    autoFocus
+                                    type="text" 
+                                    value={title}
+                                    onChange={e => setTitle(e.target.value)}
+                                    className="w-full bg-gray-900 border border-gray-700 p-2 text-white font-mono text-sm focus:border-white outline-none text-glow-white"
+                                    placeholder="我的新项目"
+                                />
+                            </div>
+                            <div>
+                                <label className={`block text-xs font-mono text-gray-500 mb-1 text-glow-white`}>{config.label}</label>
+                                <input 
+                                    type="text" 
+                                    required
+                                    value={value}
+                                    onChange={e => setValue(e.target.value)}
+                                    className="w-full bg-gray-900 border border-gray-700 p-2 text-white font-mono text-sm focus:border-white outline-none text-glow-white"
+                                    placeholder={config.placeholder}
+                                />
+                            </div>
+                            
+                            <div className="flex gap-2 mt-6">
                                 <button 
                                     type="button" 
                                     onClick={onClose} 
@@ -128,65 +181,21 @@ export const InputModal = ({
                                 >
                                     取消
                                 </button>
-                            )}
-                            <button 
-                                type="button"
-                                onClick={handleConfirm}
-                                disabled={isSubmitting}
-                                className={`flex-1 py-2 text-xs font-mono font-bold bg-opacity-20 hover:bg-opacity-40 border ${config.border} ${config.color} ${config.glow} uppercase disabled:opacity-50 disabled:cursor-not-allowed`}
-                            >
-                                {confirmText}
-                            </button>
-                        </div>
-                    </>
-                ) : (
-                    <form onSubmit={handleSubmit} className="space-y-4">
-                        <div>
-                            <label className="block text-xs font-mono text-gray-500 mb-1 text-glow-white">TITLE_TAG (可选)</label>
-                            <input 
-                                autoFocus
-                                type="text" 
-                                value={title}
-                                onChange={e => setTitle(e.target.value)}
-                                className="w-full bg-gray-900 border border-gray-700 p-2 text-white font-mono text-sm focus:border-white outline-none text-glow-white"
-                                placeholder="我的新项目"
-                            />
-                        </div>
-                        <div>
-                            <label className={`block text-xs font-mono text-gray-500 mb-1 text-glow-white`}>{config.label}</label>
-                            <input 
-                                type="text" 
-                                required
-                                value={value}
-                                onChange={e => setValue(e.target.value)}
-                                className="w-full bg-gray-900 border border-gray-700 p-2 text-white font-mono text-sm focus:border-white outline-none text-glow-white"
-                                placeholder={config.placeholder}
-                            />
-                        </div>
-                        
-                        <div className="flex gap-2 mt-6">
-                            <button 
-                                type="button" 
-                                onClick={onClose} 
-                                disabled={isSubmitting}
-                                className="flex-1 py-2 text-xs font-mono border border-gray-600 hover:bg-gray-800 text-gray-400 disabled:opacity-50 disabled:cursor-not-allowed text-glow-white"
-                            >
-                                取消
-                            </button>
-                            <button 
-                                type="submit" 
-                                disabled={isSubmitting}
-                                className={`flex-1 py-2 text-xs font-mono font-bold bg-opacity-20 hover:bg-opacity-40 border ${config.border} ${config.color} ${config.glow} uppercase disabled:opacity-50 disabled:cursor-not-allowed`}
-                            >
-                                {isSubmitting ? '加载中...' : '确认'}
-                            </button>
-                        </div>
-                    </form>
-                )}
-                {/* CRT Overlay */}
-                <div className="absolute inset-0 pointer-events-none crt-overlay z-0" />
+                                <button 
+                                    type="submit" 
+                                    disabled={isSubmitting}
+                                    className={`flex-1 py-2 text-xs font-mono font-bold bg-opacity-20 hover:bg-opacity-40 border ${config.border} ${config.color} ${config.glow} uppercase disabled:opacity-50 disabled:cursor-not-allowed`}
+                                >
+                                    {isSubmitting ? '加载中...' : '确认'}
+                                </button>
+                            </div>
+                        </form>
+                    )}
+                    {/* CRT Overlay */}
+                    <div className="absolute inset-0 pointer-events-none crt-overlay z-0" />
+                </div>
             </div>
-        </div>
+        </>
     );
 };
 

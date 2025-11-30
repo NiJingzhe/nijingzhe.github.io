@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, memo } from 'react';
 import { WindowHeader } from './WindowHeader';
 import { ArticleEditor } from './ArticleEditor';
 import { ImageViewer } from './ImageViewer';
@@ -6,7 +6,7 @@ import { GitHubCard } from './GitHubCard';
 import type { GitHubCardData } from './GitHubCard';
 import type { CanvasItemProps } from '../types';
 
-export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEditing, onEditChange, allowDrag = true, onDelete, onUnlock, isBeingEdited, editingBy }: CanvasItemProps) => {
+const CanvasItemComponent = ({ item, scale, onUpdate, onFocus, isSelected, forceEditing, onEditChange, allowDrag = true, onDelete, onUnlock, isBeingEdited, editingBy }: CanvasItemProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
   const [internalEditing, setInternalEditing] = useState(false);
@@ -241,4 +241,7 @@ export const CanvasItem = ({ item, scale, onUpdate, onFocus, isSelected, forceEd
     </div>
   );
 };
+
+// 使用 memo 优化，只在 props 变化时重新渲染
+export const CanvasItem = memo(CanvasItemComponent);
 

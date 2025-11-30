@@ -1,8 +1,8 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, memo } from 'react';
 import { RetroMarkdown } from './RetroMarkdown';
 import type { ArticleEditorProps } from '../types';
 
-export const ArticleEditor = ({ content, onChange, isEditing }: ArticleEditorProps) => {
+const ArticleEditorComponent = ({ content, onChange, isEditing }: ArticleEditorProps) => {
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const contentWrapperRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -170,4 +170,7 @@ export const ArticleEditor = ({ content, onChange, isEditing }: ArticleEditorPro
         </div>
     );
 };
+
+// 使用 memo 优化，避免不必要的重新渲染
+export const ArticleEditor = memo(ArticleEditorComponent);
 

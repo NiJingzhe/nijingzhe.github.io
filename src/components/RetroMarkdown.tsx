@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { InlineMath, BlockMath } from 'react-katex';
@@ -192,7 +192,7 @@ const parseInline = (text: string): React.ReactNode[] => {
   return parts;
 };
 
-export const RetroMarkdown = ({ content }: RetroMarkdownProps) => {
+const RetroMarkdownComponent = ({ content }: RetroMarkdownProps) => {
   if (!content) return null;
 
   const lines = content.split('\n');
@@ -811,4 +811,7 @@ export const RetroMarkdown = ({ content }: RetroMarkdownProps) => {
     </div>
   );
 };
+
+// 使用 memo 优化，只在 content 变化时重新渲染
+export const RetroMarkdown = memo(RetroMarkdownComponent);
 

@@ -63,18 +63,21 @@ export const CursorLayer = ({
     const ctx = canvasEl.getContext('2d');
     if (!ctx) return;
 
-    // 更新 Canvas 尺寸以匹配容器
-    const rect = containerRef.current.getBoundingClientRect();
-    if (canvasEl.width !== rect.width || canvasEl.height !== rect.height) {
-      canvasEl.width = rect.width;
-      canvasEl.height = rect.height;
-    }
+    let rafId: number | null = null;
+    
+    const render = () => {
+      // 更新 Canvas 尺寸以匹配容器
+      const rect = containerRef.current!.getBoundingClientRect();
+      if (canvasEl.width !== rect.width || canvasEl.height !== rect.height) {
+        canvasEl.width = rect.width;
+        canvasEl.height = rect.height;
+      }
 
-    // 清空画布
-    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+      // 清空画布
+      ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
 
-    // 绘制所有光标（排除自己的光标，因为会单独显示）
-    cursors.forEach((cursor) => {
+      // 绘制所有光标（排除自己的光标，因为会单独显示）
+      cursors.forEach((cursor) => {
       if (cursor.visitor_uid === currentUserId) return;
 
       const color = userColors.get(cursor.visitor_uid) || '#00ffff';
@@ -123,7 +126,17 @@ export const CursorLayer = ({
 
         ctx.restore();
       }
-    });
+      });
+    };
+    
+    // 使用 requestAnimationFrame 优化渲染
+    rafId = requestAnimationFrame(render);
+    
+    return () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+      }
+    };
   }, [cursors, currentUserId, canvas, containerRef, userColors, userNames]);
 
   return (
