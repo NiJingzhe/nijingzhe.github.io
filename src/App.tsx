@@ -521,7 +521,7 @@ const App = () => {
       } catch (error) {
         console.error('Error saving card:', error);
       }
-    }, 2000); // 2秒防抖
+    }, 500); // 0.5秒防抖，提高保存频率
   };
 
   // 异步保存涂鸦（不阻塞主线程）
@@ -1255,47 +1255,87 @@ const App = () => {
             // 标记锁操作进行中
             isLockOperationInProgressRef.current = true;
             
-            // 尝试获取锁
-            try {
-              console.log(`[App] 进入编辑模式前获取锁 - cardId: ${selectedId}, userId: ${userId}, sessionId: ${sessionId}`);
-              const startTime = performance.now();
-              const success = await acquireLock(selectedId, userId, sessionId);
-              const endTime = performance.now();
-              console.log(`[App] 获取锁耗时: ${(endTime - startTime).toFixed(2)}ms - cardId: ${selectedId}, userId: ${userId}`);
-              
-              if (!success) {
-                console.warn(`[App] 获取锁失败 - cardId: ${selectedId}, userId: ${userId}`);
-                setLockError('无法获取编辑锁，可能正在被其他用户编辑');
-                isLockOperationInProgressRef.current = false;
-                return;
+            // 乐观更新：先更新本地锁状态，让用户立即进入编辑模式
+            // 这样其他客户端也能更快看到锁状态
+            const optimisticLockInfo: EditLockInfo = {
+              visitor_uid: userId,
+              uname: null, // 稍后通过 Realtime 更新
+              locked_at: new Date().toISOString()
+            };
+            setEditLocks(prev => {
+              const newLocks = new Map(prev);
+              newLocks.set(selectedId, optimisticLockInfo);
+              return newLocks;
+            });
+            
+            // 立即进入编辑模式（乐观更新）
+            currentEditLockRef.current = selectedId;
+            if (card.type === 'article') {
+              setEditingCardId(selectedId);
+              setVimMode('edit');
+            } else {
+              // Repo 或 Image 卡片，弹出 InputModal 进行编辑
+              setEditingCardId(selectedId);
+              setVimMode('edit');
+              if (card.type === 'github') {
+                setModalType('github');
+              } else if (card.type === 'image') {
+                setModalType('image');
               }
-              
-              // RPC 调用已经保证了原子性，如果返回成功则锁已获取，无需额外验证
-              console.log(`[App] 获取锁成功，设置 currentEditLockRef - cardId: ${selectedId}, userId: ${userId}`);
-              currentEditLockRef.current = selectedId;
-              
-              // 锁操作完成，可以进入编辑模式
-              isLockOperationInProgressRef.current = false;
-              
-              if (card.type === 'article') {
-                setEditingCardId(selectedId);
-                setVimMode('edit');
-              } else {
-                // Repo 或 Image 卡片，弹出 InputModal 进行编辑
-                setEditingCardId(selectedId);
-                setVimMode('edit');
-                if (card.type === 'github') {
-                  setModalType('github');
-                } else if (card.type === 'image') {
-                  setModalType('image');
-                }
-              }
-            } catch (error) {
-              console.error(`[App] 获取锁异常 - cardId: ${selectedId}, userId: ${userId}:`, error);
-              setLockError('获取编辑锁失败');
-              isLockOperationInProgressRef.current = false;
-              return;
             }
+            
+            // 锁操作完成标记（允许后续操作）
+            isLockOperationInProgressRef.current = false;
+            
+            // 后台异步获取锁（不阻塞用户操作）
+            const lockStartTime = performance.now();
+            acquireLock(selectedId, userId, sessionId)
+              .then((success) => {
+                const lockEndTime = performance.now();
+                console.log(`[App] 后台获取锁${success ? '成功' : '失败'} - cardId: ${selectedId}, userId: ${userId}, 耗时: ${(lockEndTime - lockStartTime).toFixed(2)}ms`);
+                
+                if (!success) {
+                  console.warn(`[App] 获取锁失败，回滚编辑模式 - cardId: ${selectedId}, userId: ${userId}`);
+                  // 获取锁失败，回滚编辑模式
+                  setEditLocks(prev => {
+                    const newLocks = new Map(prev);
+                    newLocks.delete(selectedId);
+                    return newLocks;
+                  });
+                  
+                  // 退出编辑模式
+                  if (currentEditLockRef.current === selectedId) {
+                    currentEditLockRef.current = null;
+                    setEditingCardId(null);
+                    setVimMode('normal');
+                    setModalType(null);
+                  }
+                  
+                  setLockError('无法获取编辑锁，可能正在被其他用户编辑');
+                } else {
+                  // 获取锁成功，Realtime 事件会更新锁状态（包括用户名）
+                  console.log(`[App] 获取锁成功 - cardId: ${selectedId}, userId: ${userId}`);
+                }
+              })
+              .catch((error) => {
+                console.error(`[App] 获取锁异常，回滚编辑模式 - cardId: ${selectedId}, userId: ${userId}:`, error);
+                // 获取锁异常，回滚编辑模式
+                setEditLocks(prev => {
+                  const newLocks = new Map(prev);
+                  newLocks.delete(selectedId);
+                  return newLocks;
+                });
+                
+                // 退出编辑模式
+                if (currentEditLockRef.current === selectedId) {
+                  currentEditLockRef.current = null;
+                  setEditingCardId(null);
+                  setVimMode('normal');
+                  setModalType(null);
+                }
+                
+                setLockError('获取编辑锁失败');
+              });
           } else {
             // 没有 userId，直接进入编辑模式（不获取锁）
           if (card.type === 'article') {

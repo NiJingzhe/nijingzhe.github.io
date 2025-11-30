@@ -101,9 +101,12 @@ export const subscribeEditLocks = (
   // 处理增量更新
   const handleLockChange = async (payload: any): Promise<void> => {
     const now = new Date().toISOString();
+    // Supabase Realtime 的 payload 结构：{ eventType: 'INSERT'|'UPDATE'|'DELETE', new: {...}, old: {...} }
     const eventType = payload.eventType || payload.type;
     const newRecord = payload.new as EditLockRecord | null | undefined;
     const oldRecord = payload.old as EditLockRecord | null | undefined;
+    
+    console.log(`[Realtime] 处理锁变化 - eventType: ${eventType}`, { newRecord, oldRecord });
     
     if (eventType === 'INSERT' && newRecord) {
       const lock = newRecord;
@@ -146,10 +149,31 @@ export const subscribeEditLocks = (
         currentLocks.delete(lock.card_id);
         callback(new Map(currentLocks));
       }
-    } else if (eventType === 'DELETE' && oldRecord) {
-      const lock = oldRecord;
-      console.log(`[Realtime] 检测到锁删除 - cardId: ${lock.card_id}`);
-      currentLocks.delete(lock.card_id);
+    } else if (eventType === 'DELETE') {
+      // DELETE 事件：尝试从 old 记录获取 card_id
+      let cardId: string | undefined;
+      
+      if (oldRecord) {
+        // 尝试不同的字段名
+        cardId = oldRecord.card_id || (oldRecord as any).cardId;
+      }
+      
+      // 如果无法从 payload 获取 card_id，回退到重新获取所有锁
+      if (!cardId) {
+        console.warn('[Realtime] DELETE 事件无法获取 card_id，回退到重新获取所有锁', payload);
+        // 重新获取所有锁，然后移除已过期的
+        try {
+          const locks = await fetchLocksWithNames();
+          currentLocks = locks;
+          callback(locks);
+        } catch (error) {
+          console.error('[Realtime] 重新获取锁列表失败:', error);
+        }
+        return;
+      }
+      
+      console.log(`[Realtime] 检测到锁删除 - cardId: ${cardId}`);
+      currentLocks.delete(cardId);
       callback(new Map(currentLocks));
     }
   };
@@ -180,7 +204,13 @@ export const subscribeEditLocks = (
       },
       async (payload) => {
         // 使用事件 payload 进行增量更新
-        console.log('[Realtime] 检测到编辑锁表变化', payload);
+        console.log('[Realtime] 检测到编辑锁表变化', {
+          eventType: payload.eventType || payload.type,
+          hasNew: !!payload.new,
+          hasOld: !!payload.old,
+          newRecord: payload.new,
+          oldRecord: payload.old
+        });
         try {
           await handleLockChange(payload);
         } catch (error) {
