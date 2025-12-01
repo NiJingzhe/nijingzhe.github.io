@@ -1,5 +1,5 @@
 import { useEffect, useRef, useImperativeHandle, forwardRef } from 'react';
-import type { DrawPath, CanvasState } from '../types';
+import type { DrawPath, CanvasState, RemoteDrawingPath } from '../types';
 
 interface CanvasDrawingLayerProps {
   drawPaths: DrawPath[];

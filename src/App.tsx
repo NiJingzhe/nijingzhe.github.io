@@ -13,7 +13,7 @@ import { EditConflictModal } from './components/EditConflictModal';
 import { fetchGitHubRepoInfo } from './utils/githubApi';
 import { loadCards, saveCard, deleteCard, loadDrawings, saveDrawing, deleteDrawing, getTotalVisits, getTodayVisits, upsertCursor, getActiveCursors, getVisitorByUid, upsertSession, type Cursor } from './utils/db';
 import { initializeUser, updateSessionHeartbeat, setUserName } from './utils/user';
-import { subscribeOnlineCount, subscribeVisits, subscribeCursors, subscribeEditLocks, subscribeCards, type EditLockInfo } from './utils/realtime/index';
+import { subscribeOnlineCount, subscribeVisits, subscribeCursors, subscribeEditLocks, subscribeCards, subscribeDrawings, type EditLockInfo } from './utils/realtime/index';
 import { acquireLock, renewLock, releaseLock, isLockHeldByCurrentUser, isCardLocked, getLockInfo } from './utils/editLock';
 import { CursorManager } from './components/CursorManager';
 import { cleanupOnAppStart } from './utils/cleanup';
@@ -235,6 +235,7 @@ const App = () => {
     let unsubscribeCursors: (() => void) | null = null;
     let unsubscribeEditLocks: (() => void) | null = null;
     let unsubscribeCards: (() => void) | null = null;
+    let unsubscribeDrawings: (() => void) | null = null;
 
     const initUserAndStats = async () => {
       try {
@@ -394,6 +395,17 @@ const App = () => {
           }, 100);
         }, sid); // 传入当前 sessionId 过滤自己的更新
 
+        // 订阅绘制路径变化（同步远程更新）
+        unsubscribeDrawings = subscribeDrawings((drawings) => {
+          setDrawPaths(drawings);
+          // 更新已保存 ID 集合
+          drawings.forEach(drawing => {
+            if (typeof drawing.id === 'string') {
+              savedDrawingIdsRef.current.add(drawing.id);
+            }
+          });
+        });
+
         // 8. 监听页面可见性变化，从隐藏变为可见时续期 session
         const handleVisibilityChange = async () => {
           if (!document.hidden && userId) {
@@ -505,6 +517,9 @@ const App = () => {
       }
       if (unsubscribeCards) {
         unsubscribeCards();
+      }
+      if (unsubscribeDrawings) {
+        unsubscribeDrawings();
       }
       if (heartbeatIntervalRef.current) {
         clearInterval(heartbeatIntervalRef.current);

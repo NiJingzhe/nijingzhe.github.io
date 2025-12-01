@@ -7,4 +7,13 @@ export { subscribeOnlineCount, getCurrentOnlineCount, subscribeVisits } from './
 export { subscribeCursors } from './cursors';
 export { subscribeEditLocks, type EditLockInfo } from './editLocks';
 export { subscribeCards } from './cards';
+export { subscribeDrawings } from './drawings';
+export { 
+  initDrawingPathBroadcast, 
+  broadcastDrawingPath, 
+  broadcastDrawingEnd,
+  broadcastErase,
+  subscribeRemoteDrawingPaths,
+  type RemoteDrawingPath 
+} from './drawingPaths';
 

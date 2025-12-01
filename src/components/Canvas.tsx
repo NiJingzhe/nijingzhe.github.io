@@ -309,8 +309,10 @@ export const Canvas = ({
     
     const worldPos = screenToWorld(e.clientX, e.clientY);
     
-    // 检查是否正在按下（鼠标或触摸）
-    const isPressing = e.buttons === 1 || e.pointerType === 'touch';
+    // 检查是否正在按下（鼠标按钮或触摸）
+    // 对于鼠标：e.buttons === 1 表示左键按下
+    // 对于触摸：e.pressure > 0 表示手指正在触摸屏幕
+    const isPressing = e.buttons === 1 || (e.pointerType === 'touch' && e.pressure > 0);
     
     if (drawMode === 'erase' && isPressing) {
       // 橡皮擦模式：立即删除路径（使用 drawWidth 作为橡皮擦半径）
@@ -336,9 +338,9 @@ export const Canvas = ({
       e.preventDefault();
       e.stopPropagation();
       setCurrentPath(prev => {
-        // 避免重复添加相同的点
+        // 避免完全重复的点，但放宽阈值以提高采样率
         const lastPoint = prev[prev.length - 1];
-        if (lastPoint && Math.abs(lastPoint.x - worldPos.x) < 0.1 && Math.abs(lastPoint.y - worldPos.y) < 0.1) {
+        if (lastPoint && Math.abs(lastPoint.x - worldPos.x) < 0.01 && Math.abs(lastPoint.y - worldPos.y) < 0.01) {
           return prev;
         }
         const newPath = [...prev, worldPos];
@@ -354,14 +356,16 @@ export const Canvas = ({
     // 移除指针
     activePointers.current.delete(e.pointerId);
     
+    // 释放指针捕获
+    if (target.hasPointerCapture(e.pointerId)) {
+      target.releasePointerCapture(e.pointerId);
+    }
+    
     // 如果只剩一个或没有指针，结束缩放手势
     if (isPinching && activePointers.current.size < 2) {
       e.preventDefault();
       setIsPinching(false);
       setPinchStart(null);
-      if (target.hasPointerCapture(e.pointerId)) {
-        target.releasePointerCapture(e.pointerId);
-      }
       // 如果只剩一个指针，可以转为拖拽
       if (activePointers.current.size === 1 && onUpdateCanvas && drawMode === 'off' && vimMode === 'normal') {
         const remainingPointer = Array.from(activePointers.current.values())[0];
@@ -381,9 +385,6 @@ export const Canvas = ({
       e.preventDefault();
       setIsDragging(false);
       setDragStart(null);
-      if (target.hasPointerCapture(e.pointerId)) {
-        target.releasePointerCapture(e.pointerId);
-      }
       return;
     }
     
@@ -392,14 +393,11 @@ export const Canvas = ({
       e.preventDefault();
       // 清空已擦除路径的跟踪集合
       setErasedPathIds(new Set());
-      if (target.hasPointerCapture(e.pointerId)) {
-        target.releasePointerCapture(e.pointerId);
-      }
       return;
     }
     
     // 绘制模式：结束当前绘制
-    if (drawMode === 'draw') {
+    if (drawMode === 'draw' || isDrawing) {
       e.preventDefault();
       
       // 只有在真正在绘制时才保存路径
@@ -418,17 +416,16 @@ export const Canvas = ({
             width: drawWidth
           });
         }
+        
+        // 注意：不广播 drawing_end，让远程用户的临时路径自然保留
+        // 当数据库同步的完成路径到达后，临时路径会被远程绘制路径管理自动清理
+        // 这样可以避免路径闪烁和消失的问题
       }
       
       // 重置状态，确保下一笔可以立即开始
       setIsDrawing(false);
       setCurrentPath([]);
       currentPathRef.current = [];
-      
-      // 释放指针捕获
-      if (target.hasPointerCapture(e.pointerId)) {
-        target.releasePointerCapture(e.pointerId);
-      }
       return;
     }
   };
