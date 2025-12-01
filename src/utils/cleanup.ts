@@ -17,7 +17,7 @@ export const cleanupOnAppStart = async (): Promise<void> => {
     // 注意：可以通过环境变量或配置调整清理天数，测试时可以设置为 0 来立即清理所有软删除的卡片
     const softDeleteDays = 1; // 清理 1 天前软删除的卡片
     const deletedCount = await cleanupSoftDeletedCards(softDeleteDays);
-    console.log('Cleanup completed on app start', { deletedCards: deletedCount });
+    // console.log('Cleanup completed on app start', { deletedCards: deletedCount });
   } catch (error) {
     console.error('Failed to cleanup on app start:', error);
   }
@@ -64,7 +64,7 @@ export const startPeriodicCleanup = (intervalMs: number = 5 * 60 * 1000): Return
 export const cleanupOnVisibilityChange = async (): Promise<void> => {
   try {
     await cleanupExpiredData();
-    console.log('Cleanup completed on visibility change');
+    // console.log('Cleanup completed on visibility change');
   } catch (error) {
     console.error('Failed to cleanup on visibility change:', error);
   }
@@ -86,7 +86,7 @@ export const cleanupOnUserAction = async (): Promise<void> => {
   lastCleanupTime = now;
   try {
     await cleanupExpiredData();
-    console.log('Cleanup completed on user action');
+    // console.log('Cleanup completed on user action');
   } catch (error) {
     console.error('Failed to cleanup on user action:', error);
   }

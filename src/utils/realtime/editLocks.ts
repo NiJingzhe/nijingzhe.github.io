@@ -111,13 +111,13 @@ export const subscribeEditLocks = (
     const newRecord = payload.new as EditLockRecord | null | undefined;
     const oldRecord = payload.old as EditLockRecord | null | undefined;
     
-    console.log(`[Realtime] 处理锁变化 - eventType: ${eventType}`, { newRecord, oldRecord });
+    // console.log(`[Realtime] 处理锁变化 - eventType: ${eventType}`, { newRecord, oldRecord });
     
     if (eventType === 'INSERT' && newRecord) {
       const lock = newRecord;
       // 检查锁是否过期
       if (lock.expires_at > now) {
-        console.log(`[Realtime] 检测到新锁 - cardId: ${lock.card_id}, lockId: ${lock.id}, visitorUid: ${lock.visitor_uid}`);
+        // console.log(`[Realtime] 检测到新锁 - cardId: ${lock.card_id}, lockId: ${lock.id}, visitorUid: ${lock.visitor_uid}`);
         // 记录 lockId -> cardId 映射，用于 DELETE 事件
         lockIdToCardId.set(lock.id, lock.card_id);
         
@@ -137,7 +137,7 @@ export const subscribeEditLocks = (
       const lock = newRecord;
       // 检查锁是否过期
       if (lock.expires_at > now) {
-        console.log(`[Realtime] 检测到锁更新 - cardId: ${lock.card_id}, lockId: ${lock.id}, visitorUid: ${lock.visitor_uid}`);
+        // console.log(`[Realtime] 检测到锁更新 - cardId: ${lock.card_id}, lockId: ${lock.id}, visitorUid: ${lock.visitor_uid}`);
         // 更新 lockId -> cardId 映射
         lockIdToCardId.set(lock.id, lock.card_id);
         
@@ -156,7 +156,7 @@ export const subscribeEditLocks = (
         }
       } else {
         // 锁已过期，移除
-        console.log(`[Realtime] 检测到锁过期 - cardId: ${lock.card_id}, lockId: ${lock.id}`);
+        // console.log(`[Realtime] 检测到锁过期 - cardId: ${lock.card_id}, lockId: ${lock.id}`);
         lockIdToCardId.delete(lock.id);
         currentLocks.delete(lock.card_id);
         callback(new Map(currentLocks));
@@ -169,23 +169,23 @@ export const subscribeEditLocks = (
       
       if (oldRecord) {
         lockId = oldRecord.id;
-        console.log('[Realtime] DELETE 事件 oldRecord 内容:', {
-          lockId,
-          hasCardId: !!oldRecord.card_id,
-          keys: Object.keys(oldRecord),
-          oldRecord
-        });
+        // console.log('[Realtime] DELETE 事件 oldRecord 内容:', {
+        //   lockId,
+        //   hasCardId: !!oldRecord.card_id,
+        //   keys: Object.keys(oldRecord),
+        //   oldRecord
+        // });
         
         // 从映射中查找 cardId
         if (lockId) {
           cardId = lockIdToCardId.get(lockId);
-          console.log(`[Realtime] 从映射中查找 cardId - lockId: ${lockId}, cardId: ${cardId}`);
+          // console.log(`[Realtime] 从映射中查找 cardId - lockId: ${lockId}, cardId: ${cardId}`);
         }
       }
       
       // 如果找到了 cardId，删除对应的锁
       if (cardId) {
-        console.log(`[Realtime] 检测到锁删除 - cardId: ${cardId}, lockId: ${lockId}`);
+        // console.log(`[Realtime] 检测到锁删除 - cardId: ${cardId}, lockId: ${lockId}`);
         currentLocks.delete(cardId);
         if (lockId) {
           lockIdToCardId.delete(lockId);
@@ -205,11 +205,11 @@ export const subscribeEditLocks = (
   };
 
   // 先获取一次当前编辑锁
-  console.log('[Realtime] 订阅编辑锁变化，获取初始锁列表');
+  // console.log('[Realtime] 订阅编辑锁变化，获取初始锁列表');
   fetchLocksWithNames()
     .then((locks) => {
       currentLocks = locks;
-      console.log(`[Realtime] 获取到初始编辑锁列表，数量: ${locks.size}`, Array.from(locks.entries()).map(([cardId, info]) => ({ cardId, ...info })));
+      // console.log(`[Realtime] 获取到初始编辑锁列表，数量: ${locks.size}`, Array.from(locks.entries()).map(([cardId, info]) => ({ cardId, ...info })));
       callback(locks);
     })
     .catch((error) => {
@@ -230,13 +230,13 @@ export const subscribeEditLocks = (
       },
       async (payload) => {
         // 使用事件 payload 进行增量更新
-        console.log('[Realtime] 检测到编辑锁表变化', {
-          eventType: payload.eventType || payload.type,
-          hasNew: !!payload.new,
-          hasOld: !!payload.old,
-          newRecord: payload.new,
-          oldRecord: payload.old
-        });
+        // console.log('[Realtime] 检测到编辑锁表变化', {
+        //   eventType: payload.eventType || payload.type,
+        //   hasNew: !!payload.new,
+        //   hasOld: !!payload.old,
+        //   newRecord: payload.new,
+        //   oldRecord: payload.old
+        // });
         try {
           await handleLockChange(payload);
         } catch (error) {

@@ -775,7 +775,7 @@ export const acquireEditLock = async (
   sessionId: string | null,
   lockDurationMinutes: number = 10
 ): Promise<string> => {
-  console.log(`[Lock DB] RPC调用 acquire_edit_lock - cardId: ${cardId}, visitorUid: ${visitorUid}, sessionId: ${sessionId}, duration: ${lockDurationMinutes}分钟`);
+  // console.log(`[Lock DB] RPC调用 acquire_edit_lock - cardId: ${cardId}, visitorUid: ${visitorUid}, sessionId: ${sessionId}, duration: ${lockDurationMinutes}分钟`);
   try {
     const { data, error } = await supabase.rpc('acquire_edit_lock', {
       p_card_id: cardId,
@@ -790,7 +790,7 @@ export const acquireEditLock = async (
     }
 
     const lockId = data as string;
-    console.log(`[Lock DB] RPC acquire_edit_lock 返回 - cardId: ${cardId}, visitorUid: ${visitorUid}, lockId: ${lockId || 'null'}`);
+    // console.log(`[Lock DB] RPC acquire_edit_lock 返回 - cardId: ${cardId}, visitorUid: ${visitorUid}, lockId: ${lockId || 'null'}`);
     return lockId;
   } catch (error) {
     console.error(`[Lock DB] RPC acquire_edit_lock 异常 - cardId: ${cardId}, visitorUid: ${visitorUid}:`, error);
@@ -800,7 +800,7 @@ export const acquireEditLock = async (
 
 // 释放编辑锁
 export const releaseEditLock = async (cardId: string, visitorUid: string): Promise<boolean> => {
-  console.log(`[Lock DB] RPC调用 release_edit_lock - cardId: ${cardId}, visitorUid: ${visitorUid}`);
+  // console.log(`[Lock DB] RPC调用 release_edit_lock - cardId: ${cardId}, visitorUid: ${visitorUid}`);
   try {
     const { data, error } = await supabase.rpc('release_edit_lock', {
       p_card_id: cardId,
@@ -813,7 +813,7 @@ export const releaseEditLock = async (cardId: string, visitorUid: string): Promi
     }
 
     const result = (data as boolean) || false;
-    console.log(`[Lock DB] RPC release_edit_lock 返回 - cardId: ${cardId}, visitorUid: ${visitorUid}, result: ${result}`);
+    // console.log(`[Lock DB] RPC release_edit_lock 返回 - cardId: ${cardId}, visitorUid: ${visitorUid}, result: ${result}`);
     return result;
   } catch (error) {
     console.error(`[Lock DB] RPC release_edit_lock 异常 - cardId: ${cardId}, visitorUid: ${visitorUid}:`, error);
@@ -824,7 +824,7 @@ export const releaseEditLock = async (cardId: string, visitorUid: string): Promi
 // 获取卡片的编辑锁信息
 export const getEditLock = async (cardId: string): Promise<EditLock | null> => {
   const now = new Date().toISOString();
-  console.log(`[Lock DB] 查询编辑锁 - cardId: ${cardId}, expiresAt > ${now}`);
+  // console.log(`[Lock DB] 查询编辑锁 - cardId: ${cardId}, expiresAt > ${now}`);
   try {
     const { data, error } = await supabase
       .from('edit_locks')
@@ -847,9 +847,9 @@ export const getEditLock = async (cardId: string): Promise<EditLock | null> => {
     }
 
     if (data) {
-      console.log(`[Lock DB] 找到编辑锁 - cardId: ${cardId}, lockId: ${data.id}, owner: ${data.visitor_uid}, sessionId: ${data.session_id}, lockedAt: ${data.locked_at}, expiresAt: ${data.expires_at}`);
+      // console.log(`[Lock DB] 找到编辑锁 - cardId: ${cardId}, lockId: ${data.id}, owner: ${data.visitor_uid}, sessionId: ${data.session_id}, lockedAt: ${data.locked_at}, expiresAt: ${data.expires_at}`);
     } else {
-      console.log(`[Lock DB] 未找到编辑锁 - cardId: ${cardId}`);
+      // console.log(`[Lock DB] 未找到编辑锁 - cardId: ${cardId}`);
     }
 
     return data as EditLock | null;
@@ -898,14 +898,14 @@ export const isCardLocked = async (cardId: string): Promise<boolean> => {
 
 // 检查卡片是否被特定用户锁定
 export const isCardLockedByUser = async (cardId: string, visitorUid: string): Promise<boolean> => {
-  console.log(`[Lock DB] 检查卡片是否被特定用户锁定 - cardId: ${cardId}, visitorUid: ${visitorUid}`);
+  // console.log(`[Lock DB] 检查卡片是否被特定用户锁定 - cardId: ${cardId}, visitorUid: ${visitorUid}`);
   try {
     const lock = await getEditLock(cardId);
     const isLocked = lock !== null && lock.visitor_uid === visitorUid;
     if (lock) {
-      console.log(`[Lock DB] 锁所有权检查 - cardId: ${cardId}, lockOwner: ${lock.visitor_uid}, checkUser: ${visitorUid}, match: ${lock.visitor_uid === visitorUid}, isLocked: ${isLocked}`);
+      // console.log(`[Lock DB] 锁所有权检查 - cardId: ${cardId}, lockOwner: ${lock.visitor_uid}, checkUser: ${visitorUid}, match: ${lock.visitor_uid === visitorUid}, isLocked: ${isLocked}`);
     } else {
-      console.log(`[Lock DB] 锁不存在 - cardId: ${cardId}, isLocked: ${isLocked}`);
+      // console.log(`[Lock DB] 锁不存在 - cardId: ${cardId}, isLocked: ${isLocked}`);
     }
     return isLocked;
   } catch (error) {
@@ -979,7 +979,7 @@ export const cleanupSoftDeletedCards = async (daysOld: number = 30): Promise<num
 
     const deletedCount = data || 0;
     if (deletedCount > 0) {
-      console.log(`Cleaned up ${deletedCount} soft deleted card(s) (older than ${daysOld} days)`);
+      // console.log(`Cleaned up ${deletedCount} soft deleted card(s) (older than ${daysOld} days)`);
     }
     
     return deletedCount;

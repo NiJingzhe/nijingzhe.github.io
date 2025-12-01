@@ -400,14 +400,14 @@ const App = () => {
             // 页面变为可见，检查距离上次心跳是否超过 90 秒（接近 2 分钟过期时间）
             const timeSinceLastHeartbeat = Date.now() - lastHeartbeatTimeRef.current;
             if (timeSinceLastHeartbeat > 90 * 1000) {
-              console.log('[Session] Page became visible, renewing session');
+              // console.log('[Session] Page became visible, renewing session');
               try {
                 const newSessionId = await updateSessionHeartbeat(userId);
                 if (isMounted && newSessionId) {
                   setSessionId(newSessionId);
                   sessionIdRef.current = newSessionId;
                   lastHeartbeatTimeRef.current = Date.now();
-                  console.log('[Session] Session renewed on visibility change');
+                  // console.log('[Session] Session renewed on visibility change');
                 }
               } catch (error) {
                 console.error('[Session] Error renewing session on visibility change:', error);
@@ -435,7 +435,7 @@ const App = () => {
               // 检查距离上次心跳是否超过 90 秒（接近 2 分钟过期时间）
               const timeSinceLastHeartbeat = Date.now() - lastHeartbeatTimeRef.current;
               if (timeSinceLastHeartbeat > 90 * 1000) {
-                console.log('[Session] Long time since last heartbeat, proactively renewing session');
+                // console.log('[Session] Long time since last heartbeat, proactively renewing session');
                 try {
                   const newSessionId = await updateSessionHeartbeat(uid);
                   if (newSessionId && isMounted) {
@@ -443,7 +443,7 @@ const App = () => {
                     sessionIdRef.current = newSessionId;
                     currentSessionId = newSessionId; // 使用新的 sessionId
                     lastHeartbeatTimeRef.current = Date.now();
-                    console.log('[Session] Session proactively renewed');
+                    // console.log('[Session] Session proactively renewed');
                   }
                 } catch (error) {
                   console.error('[Session] Error proactively renewing session:', error);
@@ -468,7 +468,7 @@ const App = () => {
                       // 使用新的 sessionId 重试 cursor 更新
                       await upsertCursor(uid, newSessionId, x, y, canvasX, canvasY, currentScale);
                       lastCursorUpdateRef.current = { x, y, canvasX, canvasY };
-                      console.log('[Session] Session recreated and cursor updated');
+                      // console.log('[Session] Session recreated and cursor updated');
                     }
                   } catch (retryError) {
                     console.error('[Session] Error recreating session and updating cursor:', retryError);
@@ -520,7 +520,7 @@ const App = () => {
       // 释放当前编辑锁
       if (currentEditLockRef.current && userId) {
         const cardIdToRelease = currentEditLockRef.current;
-        console.log(`[App] 组件卸载，释放锁 - cardId: ${cardIdToRelease}, userId: ${userId}`);
+        // console.log(`[App] 组件卸载，释放锁 - cardId: ${cardIdToRelease}, userId: ${userId}`);
         releaseLock(cardIdToRelease, userId).catch(error => {
           console.error(`[App] 组件卸载时释放锁异常 - cardId: ${cardIdToRelease}, userId: ${userId}:`, error);
         });
@@ -578,7 +578,7 @@ const App = () => {
       // 保存前再次检查锁状态
       if (userId) {
         const isStillEditing = currentEditLockRef.current === card.id;
-        console.log(`[App] 保存前检查锁状态 - cardId: ${card.id}, userId: ${userId}, isStillEditing: ${isStillEditing}, currentEditLockRef: ${currentEditLockRef.current}`);
+        // console.log(`[App] 保存前检查锁状态 - cardId: ${card.id}, userId: ${userId}, isStillEditing: ${isStillEditing}, currentEditLockRef: ${currentEditLockRef.current}`);
         
         if (isStillEditing) {
           // 仍在编辑模式中，必须持有锁才能保存
@@ -589,11 +589,11 @@ const App = () => {
             setConflictCardId(card.id);
             return;
           }
-          console.log(`[App] 锁状态检查通过，继续保存 - cardId: ${card.id}, userId: ${userId}`);
+          // console.log(`[App] 锁状态检查通过，继续保存 - cardId: ${card.id}, userId: ${userId}`);
         } else {
           // 已退出编辑模式（currentEditLockRef 已清空），这是最后一次保存
           // 允许保存，即使锁可能已经释放
-          console.log(`[App] 退出编辑模式的最后一次保存 - cardId: ${card.id}, userId: ${userId}`);
+          // console.log(`[App] 退出编辑模式的最后一次保存 - cardId: ${card.id}, userId: ${userId}`);
         }
       }
       
@@ -702,7 +702,7 @@ const App = () => {
         await Promise.all(unsavedDrawings.map(drawing => saveDrawing(drawing)));
       }
       
-      console.log('Data saved successfully');
+      // console.log('Data saved successfully');
     } catch (error) {
       console.error('Error saving data:', error);
     }
@@ -856,14 +856,14 @@ const App = () => {
             // 防抖续期（2秒）
             lockRenewTimerRef.current = setTimeout(async () => {
               try {
-                console.log(`[App] 开始续期锁 - cardId: ${id}, userId: ${userId}, sessionId: ${sessionId}`);
+                // console.log(`[App] 开始续期锁 - cardId: ${id}, userId: ${userId}, sessionId: ${sessionId}`);
                 const success = await renewLock(id, userId, sessionId);
                 if (!success) {
                   // 续期失败，锁可能已被其他人持有或已过期
                   console.warn(`[App] 续期锁失败 - cardId: ${id}, userId: ${userId}, 锁可能已被其他人持有或已过期`);
                   // 检查锁状态
                   const isHeld = await isLockHeldByCurrentUser(id, userId!);
-                  console.log(`[App] 续期失败后检查锁状态 - cardId: ${id}, userId: ${userId}, isHeld: ${isHeld}`);
+                  // console.log(`[App] 续期失败后检查锁状态 - cardId: ${id}, userId: ${userId}, isHeld: ${isHeld}`);
                   if (!isHeld) {
                     // 锁已被其他人持有，清除当前编辑状态并提示用户
                     console.warn(`[App] 锁已被其他人持有，退出编辑模式 - cardId: ${id}, userId: ${userId}`);
@@ -872,14 +872,14 @@ const App = () => {
                     setConflictCardId(id);
                   }
                 } else {
-                  console.log(`[App] 续期锁成功 - cardId: ${id}, userId: ${userId}`);
+                  // console.log(`[App] 续期锁成功 - cardId: ${id}, userId: ${userId}`);
                 }
               } catch (error) {
                 console.error(`[App] 续期锁异常 - cardId: ${id}, userId: ${userId}:`, error);
                 // 续期出错，检查锁状态
                 try {
                   const isHeld = await isLockHeldByCurrentUser(id, userId!);
-                  console.log(`[App] 续期异常后检查锁状态 - cardId: ${id}, userId: ${userId}, isHeld: ${isHeld}`);
+                  // console.log(`[App] 续期异常后检查锁状态 - cardId: ${id}, userId: ${userId}, isHeld: ${isHeld}`);
                   if (!isHeld) {
                     console.warn(`[App] 锁已被其他人持有，退出编辑模式 - cardId: ${id}, userId: ${userId}`);
                     await handleModeChange('normal');
@@ -1207,7 +1207,7 @@ const App = () => {
       await setUserName(userId, uname);
       setUserNameState(uname);
       // 可以在这里添加成功提示
-      console.log(`User name set to: ${uname}`);
+      // console.log(`User name set to: ${uname}`);
     } catch (error) {
       console.error('Error setting user name:', error);
       // 可以在这里添加错误提示
@@ -1259,7 +1259,7 @@ const App = () => {
   const handleModeChange = async (targetMode: VimMode) => {
     // 如果锁操作正在进行中，忽略模式切换请求
     if (isLockOperationInProgressRef.current) {
-      console.log(`[App] 锁操作进行中，忽略模式切换请求 - targetMode: ${targetMode}, currentMode: ${vimMode}`);
+      // console.log(`[App] 锁操作进行中，忽略模式切换请求 - targetMode: ${targetMode}, currentMode: ${vimMode}`);
       return;
     }
 
@@ -1269,7 +1269,7 @@ const App = () => {
         // 退出编辑模式，释放锁
         if (currentEditLockRef.current && userId) {
           const cardIdToRelease = currentEditLockRef.current;
-          console.log(`[App] 退出编辑模式，释放锁 - cardId: ${cardIdToRelease}, userId: ${userId}`);
+          // console.log(`[App] 退出编辑模式，释放锁 - cardId: ${cardIdToRelease}, userId: ${userId}`);
           
           // 标记锁操作进行中
           isLockOperationInProgressRef.current = true;
@@ -1277,22 +1277,22 @@ const App = () => {
           try {
             // 等待锁完全释放
             await releaseLock(cardIdToRelease, userId);
-            console.log(`[App] 释放锁完成 - cardId: ${cardIdToRelease}, userId: ${userId}`);
+            // console.log(`[App] 释放锁完成 - cardId: ${cardIdToRelease}, userId: ${userId}`);
             
           // 清除续期定时器
           if (lockRenewTimerRef.current) {
             clearTimeout(lockRenewTimerRef.current);
             lockRenewTimerRef.current = null;
-              console.log(`[App] 清除续期定时器 - cardId: ${cardIdToRelease}`);
+              // console.log(`[App] 清除续期定时器 - cardId: ${cardIdToRelease}`);
           }
           // 清除定期检查定时器
           if (lockCheckIntervalRef.current) {
             clearInterval(lockCheckIntervalRef.current);
             lockCheckIntervalRef.current = null;
-              console.log(`[App] 清除定期检查定时器 - cardId: ${cardIdToRelease}`);
+              // console.log(`[App] 清除定期检查定时器 - cardId: ${cardIdToRelease}`);
           }
           currentEditLockRef.current = null;
-            console.log(`[App] 清除 currentEditLockRef - cardId: ${cardIdToRelease}`);
+            // console.log(`[App] 清除 currentEditLockRef - cardId: ${cardIdToRelease}`);
           } catch (error) {
             console.error(`[App] 释放锁异常 - cardId: ${cardIdToRelease}, userId: ${userId}:`, error);
           } finally {
@@ -1316,21 +1316,21 @@ const App = () => {
         if (card && !card.locked) {
           // 检查卡片是否已被其他人锁定（使用本地状态，避免额外查询）
           if (userId) {
-            console.log(`[App] 检查卡片是否被锁定 - cardId: ${selectedId}, userId: ${userId}`);
+            // console.log(`[App] 检查卡片是否被锁定 - cardId: ${selectedId}, userId: ${userId}`);
             // 优先使用本地 editLocks 状态，避免额外的数据库查询
               const lockInfo = editLocks.get(selectedId);
             if (lockInfo) {
-              console.log(`[App] 从本地状态获取锁信息 - cardId: ${selectedId}, lockInfo:`, lockInfo, `currentUserId: ${userId}`);
+              // console.log(`[App] 从本地状态获取锁信息 - cardId: ${selectedId}, lockInfo:`, lockInfo, `currentUserId: ${userId}`);
               if (lockInfo.visitor_uid !== userId) {
                 // 被其他人锁定，提示用户
                 console.warn(`[App] 卡片被其他人锁定 - cardId: ${selectedId}, lockOwner: ${lockInfo.visitor_uid}, currentUser: ${userId}`);
                 setLockError(`卡片正在被 ${lockInfo.uname || '其他用户'} 编辑中，无法进入编辑模式`);
                 return;
               } else {
-                console.log(`[App] 卡片被当前用户锁定，可以直接获取 - cardId: ${selectedId}, userId: ${userId}`);
+                // console.log(`[App] 卡片被当前用户锁定，可以直接获取 - cardId: ${selectedId}, userId: ${userId}`);
               }
             } else {
-              console.log(`[App] 本地状态显示卡片未被锁定 - cardId: ${selectedId}`);
+              // console.log(`[App] 本地状态显示卡片未被锁定 - cardId: ${selectedId}`);
             }
             
             // 标记锁操作进行中
@@ -1373,7 +1373,7 @@ const App = () => {
             acquireLock(selectedId, userId, sessionId)
               .then((success) => {
                 const lockEndTime = performance.now();
-                console.log(`[App] 后台获取锁${success ? '成功' : '失败'} - cardId: ${selectedId}, userId: ${userId}, 耗时: ${(lockEndTime - lockStartTime).toFixed(2)}ms`);
+                // console.log(`[App] 后台获取锁${success ? '成功' : '失败'} - cardId: ${selectedId}, userId: ${userId}, 耗时: ${(lockEndTime - lockStartTime).toFixed(2)}ms`);
                 
                 if (!success) {
                   console.warn(`[App] 获取锁失败，回滚编辑模式 - cardId: ${selectedId}, userId: ${userId}`);
@@ -1395,7 +1395,7 @@ const App = () => {
                   setLockError('无法获取编辑锁，可能正在被其他用户编辑');
                 } else {
                   // 获取锁成功，Realtime 事件会更新锁状态（包括用户名）
-                  console.log(`[App] 获取锁成功 - cardId: ${selectedId}, userId: ${userId}`);
+                  // console.log(`[App] 获取锁成功 - cardId: ${selectedId}, userId: ${userId}`);
                 }
               })
               .catch((error) => {

@@ -41,7 +41,7 @@ export const subscribeCards = (
         // 过滤掉由当前会话发起的更新，避免覆盖本地未保存的修改
         const updatedBySession = payload.new?.updated_by_session;
         if (currentSessionId && updatedBySession === currentSessionId) {
-          console.log('[subscribeCards] 忽略自己发起的更新', payload.new?.id);
+          // console.log('[subscribeCards] 忽略自己发起的更新', payload.new?.id);
           return;
         }
         

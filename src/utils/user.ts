@@ -67,7 +67,7 @@ export const initializeUser = async (): Promise<{ uid: string; sessionId: string
       
       // 3. 如果数据库中没有这个用户，生成新的 UUID 并清除旧的
       if (!visitor) {
-        console.log('User not found in database, creating new user');
+        // console.log('User not found in database, creating new user');
         // 清除 localStorage 中的旧 UUID
         localStorage.removeItem(USER_ID_KEY);
         // 生成新的 UUID
