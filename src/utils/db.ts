@@ -189,7 +189,7 @@ export const loadCards = async (): Promise<CanvasItemData[]> => {
 };
 
 // 保存卡片
-export const saveCard = async (card: CanvasItemData): Promise<void> => {
+export const saveCard = async (card: CanvasItemData, sessionId?: string | null): Promise<void> => {
   try {
     // 准备 data jsonb 字段
     let data: Record<string, unknown> = {
@@ -223,6 +223,7 @@ export const saveCard = async (card: CanvasItemData): Promise<void> => {
         height: card.height,
         locked: card.locked === true, // 保存到数据库的 locked 列
         data,
+        updated_by_session: sessionId || null, // 保存会话 ID
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'id'

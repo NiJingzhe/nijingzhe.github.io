@@ -24,6 +24,7 @@
 | `height` | `numeric` | 卡片高度（像素） | 默认 400 |
 | `locked` | `boolean` | 是否锁定（锁定后不可拖拽） | 默认 false |
 | `data` | `jsonb` | 卡片数据（JSON 格式） | 必填 |
+| `updated_by_session` | `text` | 最后更新该卡片的会话 ID | 可选 |
 | `created_at` | `timestamp` | 创建时间 | 自动生成 |
 | `updated_at` | `timestamp` | 更新时间 | 自动更新 |
 

@@ -110,6 +110,7 @@ const App = () => {
   const canvasScaleRef = useRef<number>(canvas.scale);
   const cursorPositionRef = useRef<{ x: number; y: number; canvasX: number; canvasY: number } | null>(null);
   const sessionIdRef = useRef<string | null>(null); // 用于在定时器中访问最新的 sessionId
+  const lastHeartbeatTimeRef = useRef<number>(Date.now()); // 记录上次心跳时间
 
   // 编辑锁相关状态
   const [editLocks, setEditLocks] = useState<Map<string, EditLockInfo>>(new Map());
@@ -191,7 +192,7 @@ const App = () => {
             initializingCardIdsRef.current.add(defaultCard.id);
             setItems([defaultCard]);
             // 保存默认卡片（只保存一次）
-            await saveCard(defaultCard);
+            await saveCard(defaultCard, sessionId);
             // 初始化完成后移除标记
             initializingCardIdsRef.current.delete(defaultCard.id);
           }
@@ -248,12 +249,14 @@ const App = () => {
 
         // 2. 启动心跳定时器（每 30 秒）
         if (sid) {
+          lastHeartbeatTimeRef.current = Date.now(); // 初始化心跳时间
           heartbeatIntervalRef.current = setInterval(async () => {
             try {
               const newSessionId = await updateSessionHeartbeat(uid);
               if (isMounted && newSessionId) {
                 setSessionId(newSessionId);
                 sessionIdRef.current = newSessionId; // 同步更新 ref
+                lastHeartbeatTimeRef.current = Date.now(); // 更新心跳时间
               }
             } catch (error) {
               console.error('Heartbeat failed:', error);
@@ -389,14 +392,37 @@ const App = () => {
           setTimeout(() => {
             isSyncingRemoteUpdateRef.current = false;
           }, 100);
-        });
+        }, sid); // 传入当前 sessionId 过滤自己的更新
+
+        // 8. 监听页面可见性变化，从隐藏变为可见时续期 session
+        const handleVisibilityChange = async () => {
+          if (!document.hidden && userId) {
+            // 页面变为可见，检查距离上次心跳是否超过 90 秒（接近 2 分钟过期时间）
+            const timeSinceLastHeartbeat = Date.now() - lastHeartbeatTimeRef.current;
+            if (timeSinceLastHeartbeat > 90 * 1000) {
+              console.log('[Session] Page became visible, renewing session');
+              try {
+                const newSessionId = await updateSessionHeartbeat(userId);
+                if (isMounted && newSessionId) {
+                  setSessionId(newSessionId);
+                  sessionIdRef.current = newSessionId;
+                  lastHeartbeatTimeRef.current = Date.now();
+                  console.log('[Session] Session renewed on visibility change');
+                }
+              } catch (error) {
+                console.error('[Session] Error renewing session on visibility change:', error);
+              }
+            }
+          }
+        };
+        document.addEventListener('visibilitychange', handleVisibilityChange);
 
         // 9. 启动光标位置更新定时器（每 100ms 更新一次）
         cursorUpdateTimerRef.current = setInterval(async () => {
           // 使用 ref 获取最新的 cursorPosition、canvas.scale 和 sessionId
           const currentPosition = cursorPositionRef.current;
           const currentScale = canvasScaleRef.current;
-          const currentSessionId = sessionIdRef.current;
+          let currentSessionId = sessionIdRef.current;
           
           if (currentPosition && uid && currentSessionId) {
             const { x, y, canvasX, canvasY } = currentPosition;
@@ -405,29 +431,50 @@ const App = () => {
             const last = lastCursorUpdateRef.current;
             if (!last || last.x !== x || last.y !== y || 
                 last.canvasX !== canvasX || last.canvasY !== canvasY) {
+              
+              // 检查距离上次心跳是否超过 90 秒（接近 2 分钟过期时间）
+              const timeSinceLastHeartbeat = Date.now() - lastHeartbeatTimeRef.current;
+              if (timeSinceLastHeartbeat > 90 * 1000) {
+                console.log('[Session] Long time since last heartbeat, proactively renewing session');
+                try {
+                  const newSessionId = await updateSessionHeartbeat(uid);
+                  if (newSessionId && isMounted) {
+                    setSessionId(newSessionId);
+                    sessionIdRef.current = newSessionId;
+                    currentSessionId = newSessionId; // 使用新的 sessionId
+                    lastHeartbeatTimeRef.current = Date.now();
+                    console.log('[Session] Session proactively renewed');
+                  }
+                } catch (error) {
+                  console.error('[Session] Error proactively renewing session:', error);
+                }
+              }
+              
               try {
                 await upsertCursor(uid, currentSessionId, x, y, canvasX, canvasY, currentScale);
                 lastCursorUpdateRef.current = { x, y, canvasX, canvasY };
               } catch (error: any) {
                 // 处理外键约束错误：session 不存在
                 if (error?.code === '23503' && error?.message?.includes('sessions')) {
-                  console.warn('Session not found, recreating session and retrying cursor update');
+                  console.warn('[Session] Session not found during cursor update, recreating session');
                   try {
                     // 重新创建 session
-                    const newSessionId = await upsertSession(uid);
+                    const newSessionId = await updateSessionHeartbeat(uid);
                     if (newSessionId && isMounted) {
                       // 更新 sessionId 状态和 ref
                       setSessionId(newSessionId);
                       sessionIdRef.current = newSessionId;
+                      lastHeartbeatTimeRef.current = Date.now();
                       // 使用新的 sessionId 重试 cursor 更新
                       await upsertCursor(uid, newSessionId, x, y, canvasX, canvasY, currentScale);
                       lastCursorUpdateRef.current = { x, y, canvasX, canvasY };
+                      console.log('[Session] Session recreated and cursor updated');
                     }
                   } catch (retryError) {
-                    console.error('Error recreating session and updating cursor:', retryError);
+                    console.error('[Session] Error recreating session and updating cursor:', retryError);
                   }
                 } else {
-                  console.error('Error updating cursor:', error);
+                  console.error('[Cursor] Error updating cursor:', error);
                 }
               }
             }
@@ -448,6 +495,8 @@ const App = () => {
       if (unsubscribeVisits) {
         unsubscribeVisits();
       }
+      // 移除页面可见性监听器
+      document.removeEventListener('visibilitychange', () => {});
       if (unsubscribeCursors) {
         unsubscribeCursors();
       }
@@ -527,20 +576,29 @@ const App = () => {
     }
     saveCardTimerRef.current = setTimeout(async () => {
       // 保存前再次检查锁状态
-      if (currentEditLockRef.current === card.id && userId) {
-        console.log(`[App] 保存前检查锁状态 - cardId: ${card.id}, userId: ${userId}, currentEditLockRef: ${currentEditLockRef.current}`);
-        const isHeld = await isLockHeldByCurrentUser(card.id, userId);
-        if (!isHeld) {
-          console.warn(`[App] 保存时发现锁已被其他人持有 - cardId: ${card.id}, userId: ${userId}`);
-          // 锁已被其他人持有，显示冲突对话框
-          setConflictCardId(card.id);
-          return;
+      if (userId) {
+        const isStillEditing = currentEditLockRef.current === card.id;
+        console.log(`[App] 保存前检查锁状态 - cardId: ${card.id}, userId: ${userId}, isStillEditing: ${isStillEditing}, currentEditLockRef: ${currentEditLockRef.current}`);
+        
+        if (isStillEditing) {
+          // 仍在编辑模式中，必须持有锁才能保存
+          const isHeld = await isLockHeldByCurrentUser(card.id, userId);
+          if (!isHeld) {
+            console.warn(`[App] 保存时发现锁已被其他人持有 - cardId: ${card.id}, userId: ${userId}`);
+            // 锁已被其他人持有，显示冲突对话框
+            setConflictCardId(card.id);
+            return;
+          }
+          console.log(`[App] 锁状态检查通过，继续保存 - cardId: ${card.id}, userId: ${userId}`);
+        } else {
+          // 已退出编辑模式（currentEditLockRef 已清空），这是最后一次保存
+          // 允许保存，即使锁可能已经释放
+          console.log(`[App] 退出编辑模式的最后一次保存 - cardId: ${card.id}, userId: ${userId}`);
         }
-        console.log(`[App] 锁状态检查通过，继续保存 - cardId: ${card.id}, userId: ${userId}`);
       }
       
       try {
-        await saveCard(card);
+        await saveCard(card, sessionId);
       } catch (error) {
         console.error('Error saving card:', error);
       }
@@ -634,7 +692,7 @@ const App = () => {
   const handleManualSave = async () => {
     try {
       // 保存所有卡片
-      await Promise.all(items.map(card => saveCard(card)));
+      await Promise.all(items.map(card => saveCard(card, sessionId)));
       
       // 保存所有未保存的涂鸦（这里简化处理，实际可能需要跟踪哪些已保存）
       const unsavedDrawings = drawPaths.filter(path => 
@@ -876,7 +934,7 @@ const App = () => {
       // 聚焦到新卡片
       centerOnCard(id);
       // 立即保存新卡片（不防抖）
-      saveCard(newItem).catch(error => console.error('Error saving new card:', error));
+      saveCard(newItem, sessionId).catch(error => console.error('Error saving new card:', error));
   };
 
   const handleModalSubmit = async (value: string, title: string) => {

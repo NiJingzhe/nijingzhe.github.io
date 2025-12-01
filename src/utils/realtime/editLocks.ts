@@ -33,6 +33,8 @@ export const subscribeEditLocks = (
 ): (() => void) => {
   // 维护当前锁状态
   let currentLocks = new Map<string, EditLockInfo>();
+  // 维护 lockId -> cardId 的映射，用于 DELETE 事件
+  const lockIdToCardId = new Map<string, string>();
 
   // 获取用户名并更新锁信息
   const updateLockWithName = async (
@@ -72,6 +74,9 @@ export const subscribeEditLocks = (
       // 并行获取所有用户名
       await Promise.all(
         locks.map(async (lock) => {
+          // 建立 lockId -> cardId 映射
+          lockIdToCardId.set(lock.id, lock.card_id);
+          
           try {
             const visitor = await getVisitorByUid(lock.visitor_uid);
             locksMap.set(lock.card_id, {
@@ -112,7 +117,10 @@ export const subscribeEditLocks = (
       const lock = newRecord;
       // 检查锁是否过期
       if (lock.expires_at > now) {
-        console.log(`[Realtime] 检测到新锁 - cardId: ${lock.card_id}, visitorUid: ${lock.visitor_uid}`);
+        console.log(`[Realtime] 检测到新锁 - cardId: ${lock.card_id}, lockId: ${lock.id}, visitorUid: ${lock.visitor_uid}`);
+        // 记录 lockId -> cardId 映射，用于 DELETE 事件
+        lockIdToCardId.set(lock.id, lock.card_id);
+        
         // 先快速更新锁状态（不包含用户名），立即通知
         const lockInfo: EditLockInfo = {
           visitor_uid: lock.visitor_uid,
@@ -129,7 +137,10 @@ export const subscribeEditLocks = (
       const lock = newRecord;
       // 检查锁是否过期
       if (lock.expires_at > now) {
-        console.log(`[Realtime] 检测到锁更新 - cardId: ${lock.card_id}, visitorUid: ${lock.visitor_uid}`);
+        console.log(`[Realtime] 检测到锁更新 - cardId: ${lock.card_id}, lockId: ${lock.id}, visitorUid: ${lock.visitor_uid}`);
+        // 更新 lockId -> cardId 映射
+        lockIdToCardId.set(lock.id, lock.card_id);
+        
         // 先快速更新锁状态
         const lockInfo: EditLockInfo = {
           visitor_uid: lock.visitor_uid,
@@ -145,36 +156,51 @@ export const subscribeEditLocks = (
         }
       } else {
         // 锁已过期，移除
-        console.log(`[Realtime] 检测到锁过期 - cardId: ${lock.card_id}`);
+        console.log(`[Realtime] 检测到锁过期 - cardId: ${lock.card_id}, lockId: ${lock.id}`);
+        lockIdToCardId.delete(lock.id);
         currentLocks.delete(lock.card_id);
         callback(new Map(currentLocks));
       }
     } else if (eventType === 'DELETE') {
-      // DELETE 事件：尝试从 old 记录获取 card_id
+      // DELETE 事件：oldRecord 只包含主键 id，不包含 card_id
+      // 需要通过 lockIdToCardId 映射来找到对应的 cardId
       let cardId: string | undefined;
+      let lockId: string | undefined;
       
       if (oldRecord) {
-        // 尝试不同的字段名
-        cardId = oldRecord.card_id || (oldRecord as any).cardId;
-      }
-      
-      // 如果无法从 payload 获取 card_id，回退到重新获取所有锁
-      if (!cardId) {
-        console.warn('[Realtime] DELETE 事件无法获取 card_id，回退到重新获取所有锁', payload);
-        // 重新获取所有锁，然后移除已过期的
-        try {
-          const locks = await fetchLocksWithNames();
-          currentLocks = locks;
-          callback(locks);
-        } catch (error) {
-          console.error('[Realtime] 重新获取锁列表失败:', error);
+        lockId = oldRecord.id;
+        console.log('[Realtime] DELETE 事件 oldRecord 内容:', {
+          lockId,
+          hasCardId: !!oldRecord.card_id,
+          keys: Object.keys(oldRecord),
+          oldRecord
+        });
+        
+        // 从映射中查找 cardId
+        if (lockId) {
+          cardId = lockIdToCardId.get(lockId);
+          console.log(`[Realtime] 从映射中查找 cardId - lockId: ${lockId}, cardId: ${cardId}`);
         }
-        return;
       }
       
-      console.log(`[Realtime] 检测到锁删除 - cardId: ${cardId}`);
-      currentLocks.delete(cardId);
-      callback(new Map(currentLocks));
+      // 如果找到了 cardId，删除对应的锁
+      if (cardId) {
+        console.log(`[Realtime] 检测到锁删除 - cardId: ${cardId}, lockId: ${lockId}`);
+        currentLocks.delete(cardId);
+        if (lockId) {
+          lockIdToCardId.delete(lockId);
+        }
+        callback(new Map(currentLocks));
+      } else {
+        console.warn('[Realtime] DELETE 事件无法找到对应的 cardId', {
+          lockId,
+          hasOldRecord: !!oldRecord,
+          mappingSize: lockIdToCardId.size,
+          currentLocksCount: currentLocks.size
+        });
+        // 无法确定哪个锁被删除，保持当前状态不变
+        // 锁会自动过期，不影响功能
+      }
     }
   };
 
