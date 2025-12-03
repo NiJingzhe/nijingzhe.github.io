@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo, useEffect } from 'react';
 import { CanvasItem } from './CanvasItem';
 import { CanvasDrawingLayer } from './CanvasDrawingLayer';
 import type { CanvasProps } from '../types';
@@ -37,6 +37,40 @@ export const Canvas = ({
   const activePointers = useRef<Map<number, { x: number; y: number }>>(new Map());
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasDrawingLayerRef = useRef<{ redraw: () => void }>(null);
+
+  // 使用 useMemo 缓存可见的卡片列表，避免频繁重新计算和重新渲染
+  // 注意：这里仍然在 useMemo 中直接访问 containerRef.current，因为 ref 的变化不会触发重新渲染
+  // 但通过依赖 canvas 状态，当 canvas 变化时会重新计算，此时 containerRef.current 应该已经存在
+  const visibleItems = useMemo(() => {
+    // 基础过滤：移除隐藏的卡片
+    const baseFiltered = items.filter(i => i.visible !== false);
+    
+    // 如果容器未挂载，返回所有可见的卡片
+    if (!containerRef.current) {
+      return baseFiltered;
+    }
+    
+    const rect = containerRef.current.getBoundingClientRect();
+    const margin = 200; // 额外渲染边距，确保平滑过渡
+    
+    return baseFiltered.filter(i => {
+      // 计算卡片在屏幕上的位置和尺寸
+      const itemScreenX = i.x * canvas.scale + canvas.x;
+      const itemScreenY = i.y * canvas.scale + canvas.y;
+      const itemScreenWidth = i.width * canvas.scale;
+      const itemScreenHeight = i.height * canvas.scale;
+      
+      // 检查是否在视口内（使用 AABB 碰撞检测）
+      const isVisible = (
+        itemScreenX + itemScreenWidth > -margin &&
+        itemScreenX < rect.width + margin &&
+        itemScreenY + itemScreenHeight > -margin &&
+        itemScreenY < rect.height + margin
+      );
+      
+      return isVisible;
+    });
+  }, [items, canvas.x, canvas.y, canvas.scale]);
 
   // 将屏幕坐标转换为画布世界坐标
   const screenToWorld = (screenX: number, screenY: number): { x: number; y: number } => {
@@ -486,40 +520,19 @@ export const Canvas = ({
           willChange: 'transform',
         }}
       >
-        {items.filter(i => {
-          // 基础过滤：移除隐藏的卡片
-          if (i.visible === false) return false;
-          
-          // 视口裁剪：只渲染可见区域内的卡片（带边距）
-          if (containerRef.current) {
-            const rect = containerRef.current.getBoundingClientRect();
-            const margin = 200; // 额外渲染边距，确保平滑过渡
-            
-            // 计算卡片在屏幕上的位置和尺寸
-            const itemScreenX = i.x * canvas.scale + canvas.x;
-            const itemScreenY = i.y * canvas.scale + canvas.y;
-            const itemScreenWidth = i.width * canvas.scale;
-            const itemScreenHeight = i.height * canvas.scale;
-            
-            // 检查是否在视口内（使用 AABB 碰撞检测）
-            const isVisible = (
-              itemScreenX + itemScreenWidth > -margin &&
-              itemScreenX < rect.width + margin &&
-              itemScreenY + itemScreenHeight > -margin &&
-              itemScreenY < rect.height + margin
-            );
-            
-            return isVisible;
-          }
-          
-          return true;
-        }).map(item => {
+        {visibleItems.map(item => {
           const lockInfo = editLocks?.get(item.id);
           const isBeingEdited = lockInfo !== undefined && lockInfo.visitor_uid !== currentUserId;
           const editingBy = isBeingEdited ? lockInfo.uname : null;
           
           return (
-            <div key={item.id} style={{ pointerEvents: 'auto' }} data-canvas-item>
+            <div 
+              key={item.id} 
+              style={{ 
+                pointerEvents: 'auto',
+              }} 
+              data-canvas-item
+            >
               <CanvasItem 
                 item={item} 
                 scale={canvas.scale}
