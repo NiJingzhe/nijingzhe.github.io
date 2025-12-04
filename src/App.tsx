@@ -16,6 +16,7 @@ import { initializeUser, updateSessionHeartbeat, setUserName } from './utils/use
 import { subscribeOnlineCount, subscribeVisits, subscribeCursors, subscribeEditLocks, subscribeCards, subscribeDrawings, type EditLockInfo } from './utils/realtime/index';
 import { acquireLock, renewLock, releaseLock, isLockHeldByCurrentUser, isCardLocked, getLockInfo } from './utils/editLock';
 import { CursorManager } from './components/CursorManager';
+import { GestureController } from './components/GestureController';
 import { cleanupOnAppStart } from './utils/cleanup';
 import type { CanvasItemData, CanvasState, DrawPath, DrawMode, VimMode } from './types';
 import type { GitHubCardData } from './components/GitHubCard';
@@ -48,6 +49,7 @@ const App = () => {
   const [drawMode, setDrawMode] = useState<DrawMode>('off');
   const [drawColor, setDrawColor] = useState('#00ffff');
   const [drawWidth, setDrawWidth] = useState(3);
+  const [gestureEnabled, setGestureEnabled] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   
   // Vim mode states
@@ -1249,6 +1251,14 @@ const App = () => {
       handleManualSave();
       setCommand('');
       setVimMode('normal');
+    } else if (trimmed === 'og') {
+      setGestureEnabled(true);
+      setCommand('');
+      setVimMode('normal');
+    } else if (trimmed === 'cg') {
+      setGestureEnabled(false);
+      setCommand('');
+      setVimMode('normal');
     } else if (trimmed.startsWith('setuname')) {
       // 处理 setuname 命令
       const parts = trimmed.split(/\s+/);
@@ -1985,6 +1995,13 @@ const App = () => {
         onDrawWidthChange={setDrawWidth}
         onDrawModeChange={setDrawMode}
       />
+
+      {gestureEnabled && (
+        <GestureController 
+          onUpdateCanvas={(changes) => setCanvas(prev => ({ ...prev, ...changes }))}
+          currentCanvas={canvas}
+        />
+      )}
 
       <StatusBar 
         mode={vimMode}
