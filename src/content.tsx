@@ -77,6 +77,24 @@ function AboutArticle() {
         Nijinzhe (倪旌哲) is a builder working at the boundary between intelligent systems and the
         physical imagination of 3D software.
       </p>
+      <section className="about-live-card" aria-label="Live portfolio status">
+        <p className="about-live-status">
+          <span className="about-live-pulse" aria-hidden="true" />
+          Live HTML / native paint
+        </p>
+        <p className="about-live-copy">Building spatial interfaces in public.</p>
+        <a
+          className="github-cta"
+          href="https://github.com/NiJingzhe"
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Visit Nijinzhe on GitHub (opens in a new tab)"
+          data-html-texture-control
+        >
+          <span>Explore GitHub</span>
+          <span className="github-cta-arrow" aria-hidden="true">↗</span>
+        </a>
+      </section>
       <h2>Now</h2>
       <p>
         CEO at <strong>PhyXiForma</strong>, making interfaces for LM-based agents to understand and

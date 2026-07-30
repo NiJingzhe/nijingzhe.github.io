@@ -51,6 +51,10 @@ title, metadata, wall location, and an HTML article component. `TextureSource` p
 article into an `HTMLTexture` element that Three.js attaches directly to the WebGL canvas. Native
 canvas paint events keep the wall texture current without an intermediate bitmap. Reading mode
 reuses the exact article component as responsive HTML, so the wall and reader cannot drift apart.
+The CV surface is registered with Three.js `InteractionManager`, keeping its native GitHub link
+aligned with the 3D plane for pointer and keyboard interaction while the surrounding surface retains
+the existing exhibit-reading behavior. Its live pulse and scan line exercise native paint updates;
+both animations stop under `prefers-reduced-motion`.
 
 ## Architecture
 

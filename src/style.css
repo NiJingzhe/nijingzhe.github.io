@@ -84,9 +84,22 @@ button { color: inherit; }
 .article-callout { display: grid; grid-template-columns: 28px 1fr; gap: 12px; margin-top: 35px; padding: 17px 0 3px; border-top: 2px solid #d88757; }
 .article-callout span { color: #ba6747; font-family: 'DM Mono', monospace; font-size: 10px; }
 .article-callout p { margin: 0; color: #4b584b; font-size: 17px; line-height: 1.4; }
+.about-live-card { position: relative; isolation: isolate; overflow: hidden; margin: 4px 0 30px; padding: 14px 15px 15px; border: 1px solid #d8d2c5; background: #f0ede3; break-inside: avoid; }
+.about-live-card::after { content: ''; position: absolute; z-index: 0; inset: 0; background: linear-gradient(180deg, transparent 0%, transparent 44%, rgba(209,120,55,.12) 50%, transparent 56%, transparent 100%); background-size: 100% 280%; animation: live-scan 5.5s linear infinite; pointer-events: none; }
+.about-live-card > * { position: relative; z-index: 1; }
+.about-live-status { display: flex; align-items: center; gap: 8px; margin: 0 0 8px !important; color: #9c532e; font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; letter-spacing: .11em; text-transform: uppercase; }
+.about-live-pulse { width: 7px; height: 7px; border-radius: 50%; background: #c7663c; box-shadow: 0 0 0 0 rgba(199,102,60,.35); animation: live-pulse 2.4s ease-out infinite; }
+.about-live-copy { margin: 0 0 12px !important; color: #566057; font-size: 12px; line-height: 1.45; }
+.github-cta { display: flex; align-items: center; justify-content: space-between; gap: 18px; width: 100%; padding: 10px 12px; border: 1px solid #29332a; background: #29332a; color: #fbfaf5; font-family: 'DM Mono', monospace; font-size: 9px; font-weight: 500; letter-spacing: .09em; text-decoration: none; text-transform: uppercase; transition: background-color .18s ease, border-color .18s ease, color .18s ease, transform .18s ease; }
+.github-cta:hover { border-color: #ba6747; background: #ba6747; color: #fff; transform: translateY(-1px); }
+.github-cta:active { border-color: #7d3f28; background: #7d3f28; transform: translateY(1px); }
+.github-cta:focus-visible { outline: 3px solid #d88757; outline-offset: 3px; }
+.github-cta-arrow { font-size: 15px; line-height: 1; }
 .article-footer { display: flex; justify-content: space-between; padding: 15px 48px; border-top: 1px solid #d9d7cf; color: #8c9289; font-family: 'DM Mono', monospace; font-size: 8px; letter-spacing: .1em; }
 
-.texture-card { width: 840px; height: 650px; overflow: hidden; background: #fbfaf5; }
+.texture-card { width: 840px; height: 650px; overflow: hidden; background: #fbfaf5; pointer-events: none; }
+.texture-card.is-interactive { pointer-events: auto; }
+.texture-interaction-root { display: contents; }
 .texture-card .article-content { display: grid; grid-template-rows: auto 1fr auto; width: 840px; height: 650px; }
 .texture-card .article-header { padding: 25px 32px 19px; }
 .texture-card .article-header h1 { max-width: 710px; margin: 12px 0 9px; font-size: 33px; line-height: .96; }
@@ -100,7 +113,29 @@ button { color: inherit; }
 .texture-card .article-body li { margin-bottom: 3px; }
 .texture-card .article-callout { grid-template-columns: 20px 1fr; gap: 7px; margin-top: 13px; padding-top: 8px; break-inside: avoid; }
 .texture-card .article-callout p { font-size: 11px; line-height: 1.3; }
+.texture-card .about-live-card { margin: 1px 0 12px; padding: 8px 10px 9px; }
+.texture-card .about-live-status { gap: 5px; margin-bottom: 4px !important; font-size: 6px; }
+.texture-card .about-live-pulse { width: 5px; height: 5px; }
+.texture-card .about-live-copy { margin-bottom: 6px !important; font-size: 8px; line-height: 1.3; }
+.texture-card .github-cta { padding: 6px 8px; font-size: 6px; }
+.texture-card .github-cta-arrow { font-size: 10px; }
 .texture-card .article-footer { padding: 8px 32px; font-size: 6px; }
+
+@keyframes live-scan {
+  from { background-position: 0 -180%; }
+  to { background-position: 0 180%; }
+}
+
+@keyframes live-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(199,102,60,.4); opacity: .78; }
+  55% { box-shadow: 0 0 0 7px rgba(199,102,60,0); opacity: 1; }
+  100% { box-shadow: 0 0 0 7px rgba(199,102,60,0); opacity: .78; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .about-live-card::after, .about-live-pulse { animation: none; }
+  .github-cta { transition: none; }
+}
 
 @media (pointer: coarse), (hover: none) {
   .touch-controls { display: flex; }

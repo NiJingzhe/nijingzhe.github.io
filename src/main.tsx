@@ -3,7 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import * as THREE from 'three'
-import { ExhibitArticle, exhibits, type Exhibit, type ExhibitId } from './content'
+import { InteractionManager } from 'three/addons/interaction/InteractionManager.js'
+import { exhibits, type Exhibit, type ExhibitId } from './content'
+import {
+  ExhibitTextureContent,
+  isolateHTMLTexturePointerEvent,
+  routeHTMLTextureClick,
+} from './ExhibitTextureContent'
 import {
   detectNativeHTMLInCanvas,
   getHTMLInCanvasNotice,
@@ -51,15 +57,15 @@ function App() {
     setTextures((current) => ({ ...current, [id]: texture }))
   }, [])
 
-  const openReading = (id: ExhibitId, trigger?: HTMLElement | null) => {
+  const openReading = useCallback((id: ExhibitId, trigger?: HTMLElement | null) => {
     returnFocusRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null)
     setReadingId(id)
     document.exitPointerLock?.()
-  }
+  }, [])
 
-  const requestReading = (id: ExhibitId, trigger?: HTMLElement | null) => {
+  const requestReading = useCallback((id: ExhibitId, trigger?: HTMLElement | null) => {
     if (activationRef.current(id)) openReading(id, trigger)
-  }
+  }, [openReading])
 
   const beginVisit = () => {
     setStarted(true)
@@ -111,6 +117,9 @@ function App() {
             onFocus={setFocusedId}
             onRead={requestReading}
             activationRef={activationRef}
+          />
+          <HTMLTextureInteractionController
+            enabled={htmlInCanvasSupport?.supported === true && Boolean(textures.about)}
           />
         </Canvas>
 
@@ -183,7 +192,13 @@ function App() {
         )}
 
         {htmlInCanvasSupport?.supported && exhibits.map((exhibit) => (
-          <TextureSource key={exhibit.id} exhibit={exhibit} onTexture={handleTexture} />
+          <TextureSource
+            key={exhibit.id}
+            exhibit={exhibit}
+            interactive={exhibit.id === 'about' && focusedId === 'about'}
+            onRead={requestReading}
+            onTexture={handleTexture}
+          />
         ))}
       </div>
       {readingExhibit && (
@@ -212,19 +227,32 @@ function HTMLInCanvasCompatibilityNotice({ reason }: { reason: Extract<HTMLInCan
 
 function TextureSource({
   exhibit,
+  interactive,
+  onRead,
   onTexture,
 }: {
   exhibit: Exhibit
+  interactive: boolean
+  onRead: (id: ExhibitId) => void
   onTexture: (id: ExhibitId, texture: THREE.HTMLTexture) => void
 }) {
   const [element] = useState(() => {
     const source = document.createElement('div')
     source.className = 'texture-card'
-    source.setAttribute('aria-hidden', 'true')
+    if (exhibit.id !== 'about') source.setAttribute('aria-hidden', 'true')
     return source
   })
 
   useEffect(() => {
+    element.classList.toggle('is-interactive', interactive)
+  }, [element, interactive])
+
+  useEffect(() => {
+    const handleClick = (event: Event) => routeHTMLTextureClick(event, exhibit.id, onRead)
+    element.addEventListener('pointerdown', isolateHTMLTexturePointerEvent)
+    element.addEventListener('pointerup', isolateHTMLTexturePointerEvent)
+    element.addEventListener('click', handleClick)
+
     const texture = new SharedCanvasHTMLTexture(element)
     texture.colorSpace = THREE.SRGBColorSpace
     texture.minFilter = THREE.LinearFilter
@@ -232,12 +260,42 @@ function TextureSource({
     onTexture(exhibit.id, texture)
 
     return () => {
+      element.removeEventListener('pointerdown', isolateHTMLTexturePointerEvent)
+      element.removeEventListener('pointerup', isolateHTMLTexturePointerEvent)
+      element.removeEventListener('click', handleClick)
       texture.dispose()
       element.remove()
     }
-  }, [element, exhibit.id, onTexture])
+  }, [element, exhibit.id, onRead, onTexture])
 
-  return createPortal(<ExhibitArticle exhibit={exhibit} />, element)
+  return createPortal(<ExhibitTextureContent exhibit={exhibit} />, element)
+}
+
+function HTMLTextureInteractionController({ enabled }: { enabled: boolean }) {
+  const { camera, gl, scene } = useThree()
+  const interactions = useMemo(() => new InteractionManager(), [])
+
+  useEffect(() => {
+    if (!enabled) return
+    const aboutSurface = scene.getObjectByName('exhibit-surface:about')
+    if (!aboutSurface) return
+
+    interactions.connect(gl, camera)
+    interactions.add(aboutSurface)
+    return () => {
+      interactions.remove(aboutSurface)
+      interactions.disconnect()
+    }
+  }, [camera, enabled, gl, interactions, scene])
+
+  useFrame(() => {
+    if (enabled) {
+      camera.updateMatrixWorld()
+      interactions.update()
+    }
+  })
+
+  return null
 }
 
 function MuseumArchitecture() {

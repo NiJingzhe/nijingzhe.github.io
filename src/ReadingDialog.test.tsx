@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { useRef, useState } from 'react'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { exhibits } from './content'
@@ -45,6 +45,9 @@ describe('ReadingDialog', () => {
 
     const dialog = screen.getByRole('dialog')
     const close = screen.getByRole('button', { name: /close/i })
+    const github = within(dialog).getByRole('link', {
+      name: 'Visit Nijinzhe on GitHub (opens in a new tab)',
+    })
     const background = trigger.parentElement as HTMLDivElement
     expect(document.activeElement).toBe(close)
     expect(background.inert).toBe(true)
@@ -52,9 +55,11 @@ describe('ReadingDialog', () => {
     expect(dialog.getAttribute('aria-labelledby')).toBe('reading-title-about')
 
     await user.tab()
+    expect(document.activeElement).toBe(github)
+    await user.tab()
     expect(document.activeElement).toBe(close)
     await user.tab({ shift: true })
-    expect(document.activeElement).toBe(close)
+    expect(document.activeElement).toBe(github)
 
     fireEvent.keyDown(dialog, { key: 'Escape' })
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
