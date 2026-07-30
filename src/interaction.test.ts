@@ -39,6 +39,16 @@ describe('exhibit activation', () => {
     expect(canActivateExhibit(createCamera([0, 0, 4], [0, 0, 0]), frame, scene)).toBe(false)
   })
 
+  it('does not activate when the frame border is the first hit', () => {
+    const { scene, frame } = createScene()
+    const border = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 0.2), new THREE.MeshBasicMaterial())
+    border.position.z = 0.02
+    frame.add(border)
+    scene.updateMatrixWorld(true)
+
+    expect(canActivateExhibit(createCamera([0, 0, 4], [0, 0, 0]), frame, scene)).toBe(false)
+  })
+
   it('registers frame roots by exhibit id', () => {
     const { scene, frame } = createScene()
     expect(getFrameObjects(scene, ['about', 'work'])).toEqual(new Map([['about', frame]]))

@@ -29,9 +29,10 @@ export function canActivateExhibit(
   const intersections = raycaster.intersectObjects(scene.children, true)
   const firstHit = intersections[0]?.object
   const exhibitId = frame.userData.exhibitId
-  let hit: THREE.Object3D | null = firstHit ?? null
-  while (hit) {
-    if (hit === frame || hit.userData.interactiveExhibitId === exhibitId) return true
+  if (!firstHit) return false
+  let hit: THREE.Object3D | null = firstHit
+  while (hit && hit !== frame) {
+    if (hit.userData.interactiveExhibitId === exhibitId) return true
     hit = hit.parent
   }
   return false
