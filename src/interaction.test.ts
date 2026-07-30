@@ -49,6 +49,17 @@ describe('exhibit activation', () => {
     expect(canActivateExhibit(createCamera([0, 0, 4], [0, 0, 0]), frame, scene)).toBe(false)
   })
 
+  it('ignores non-interactive highlight geometry when its raycast is disabled', () => {
+    const { scene, frame } = createScene()
+    const highlight = new THREE.Mesh(new THREE.PlaneGeometry(2.08, 2.08), new THREE.MeshBasicMaterial())
+    highlight.position.z = 0.13
+    highlight.raycast = () => undefined
+    frame.add(highlight)
+    scene.updateMatrixWorld(true)
+
+    expect(canActivateExhibit(createCamera([0, 0, 4], [0, 0, 0]), frame, scene)).toBe(true)
+  })
+
   it('registers frame roots by exhibit id', () => {
     const { scene, frame } = createScene()
     expect(getFrameObjects(scene, ['about', 'work'])).toEqual(new Map([['about', frame]]))

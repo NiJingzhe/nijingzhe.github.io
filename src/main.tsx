@@ -376,7 +376,7 @@ function PictureFrame({
         <meshBasicMaterial color={exhibit.accent} />
       </mesh>
       {focused && (
-        <mesh position={[0, 0, frame.depth / 2 + 0.02]}>
+        <mesh raycast={() => undefined} position={[0, 0, frame.depth / 2 + 0.02]}>
           <planeGeometry args={[innerWidth + 0.08, innerHeight + 0.08]} />
           <meshBasicMaterial color={exhibit.accent} transparent opacity={0.12} />
         </mesh>
