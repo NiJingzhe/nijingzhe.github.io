@@ -4,6 +4,8 @@ import { createRoot } from 'react-dom/client'
 import * as THREE from 'three'
 import { ExhibitArticle, exhibits, type Exhibit, type ExhibitId } from './content'
 import { hasFinePointer, useTouchControls } from './inputCapabilities'
+import { canActivateExhibit } from './interaction'
+import { layoutErrors, museumLayout, resolveAllPlacements, resolveWalkMovement, type ResolvedHangingPoint, type Room, type WallSurface } from './layout'
 import { calculateMovementDelta } from './movement'
 import { ReadingDialog } from './ReadingDialog'
 import { TouchControls, type ControlInput } from './TouchControls'
@@ -11,8 +13,10 @@ import { createTextureTask } from './textureTask'
 import './style.css'
 
 type TextureMap = Partial<Record<ExhibitId, THREE.CanvasTexture>>
+type ActivateExhibit = (id: ExhibitId) => boolean
 
 const initialInput: ControlInput = { move: { x: 0, y: 0 }, look: { x: 0, y: 0 } }
+const resolvedPlacements = resolveAllPlacements(museumLayout)
 
 function App() {
   const [started, setStarted] = useState(false)
@@ -20,6 +24,7 @@ function App() {
   const [readingId, setReadingId] = useState<ExhibitId | null>(null)
   const [textures, setTextures] = useState<TextureMap>({})
   const input = useRef<ControlInput>(initialInput)
+  const activationRef = useRef<ActivateExhibit>(() => false)
   const stageRef = useRef<HTMLDivElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const supportsTouch = useTouchControls()
@@ -31,6 +36,10 @@ function App() {
     setFocusedId(null)
   }, [started])
 
+  useEffect(() => {
+    if (layoutErrors.length > 0) console.error('Museum layout is invalid', layoutErrors)
+  }, [])
+
   const handleTexture = useCallback((id: ExhibitId, texture: THREE.CanvasTexture) => {
     setTextures((current) => ({ ...current, [id]: texture }))
   }, [])
@@ -39,6 +48,10 @@ function App() {
     returnFocusRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null)
     setReadingId(id)
     document.exitPointerLock?.()
+  }
+
+  const requestReading = (id: ExhibitId, trigger?: HTMLElement | null) => {
+    if (activationRef.current(id)) openReading(id, trigger)
   }
 
   const beginVisit = () => {
@@ -51,12 +64,12 @@ function App() {
         <Canvas
           shadows
           dpr={[1, 2]}
-          camera={{ fov: 56, near: 0.1, far: 100, position: [0, 2.2, 13.5] }}
+          camera={{ fov: 56, near: 0.1, far: 100, position: [0, 2.2, 12.5] }}
           gl={{ antialias: true, powerPreference: 'high-performance' }}
           tabIndex={0}
           aria-label="Interactive museum scene"
           onPointerMissed={() => setFocusedId(null)}
-          onCreated={({ camera }) => camera.lookAt(0, 2.1, 8)}
+          onCreated={({ camera }) => camera.lookAt(0, 2.1, 4)}
         >
           <color attach="background" args={['#ede9df']} />
           <fog attach="fog" args={['#ede9df', 25, 72]} />
@@ -69,15 +82,16 @@ function App() {
             color="#fff4d5"
             shadow-mapSize={[1024, 1024]}
           />
-          <pointLight position={[0, 6.6, 2]} intensity={6} distance={18} color="#f4b26d" />
+          <pointLight position={[0, 6.2, 4]} intensity={4.5} distance={20} color="#f4b26d" />
           <MuseumArchitecture />
           {exhibits.map((exhibit) => (
-            <ExhibitPanel
+            <PictureFrame
               key={exhibit.id}
               exhibit={exhibit}
+              placement={resolvedPlacements.get(exhibit.id)}
               texture={textures[exhibit.id]}
               focused={focusedId === exhibit.id}
-              onRead={openReading}
+              onRead={requestReading}
             />
           ))}
           <WalkController
@@ -85,7 +99,8 @@ function App() {
             focusedId={focusedId}
             input={input}
             onFocus={setFocusedId}
-            onRead={openReading}
+            onRead={requestReading}
+            activationRef={activationRef}
           />
         </Canvas>
 
@@ -140,7 +155,7 @@ function App() {
               </span>
             </div>
             {focusedId && (
-              <button className="read-prompt" type="button" onClick={(event) => openReading(focusedId, event.currentTarget)}>
+              <button className="read-prompt" type="button" onClick={(event) => requestReading(focusedId, event.currentTarget)}>
                 <span className="prompt-key">{supportsTouch ? 'TAP' : 'F'}</span>
                 <span>
                   <strong>Read exhibit</strong>
@@ -221,148 +236,149 @@ function TextureSource({
 }
 
 function MuseumArchitecture() {
-  const walls = [7, -4, -15, -26, -37].flatMap((z, index) => {
-    const direction = index % 2 === 0 ? 1 : -1
-    return [
-      {
-        side: 'left' as const,
-        position: [-4.7, 0, z] as [number, number, number],
-        angle: direction * -0.1,
-        hue: index % 2 === 0 ? '#d7d0c3' : '#dad4c9',
-      },
-      {
-        side: 'right' as const,
-        position: [4.7, 0, z] as [number, number, number],
-        angle: direction * 0.1,
-        hue: index % 2 === 0 ? '#d1d5ca' : '#cfd4ca',
-      },
-    ]
-  })
-
   return (
     <group>
-      <mesh position={[0, -0.12, -12]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[24, 74]} />
-        <meshStandardMaterial color="#c7c0b3" roughness={0.92} />
+      {museumLayout.rooms.map((room) => <RoomShell key={room.id} room={room} />)}
+      {museumLayout.walls.map((wall) => <WallSurfaceMesh key={wall.id} wall={wall} />)}
+      <mesh position={[0, -0.12, -8]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[48, 54]} />
+        <meshStandardMaterial color="#a39d91" roughness={0.96} />
       </mesh>
-      <mesh position={[0, 8.1, -12]} rotation={[Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[24, 74]} />
-        <meshStandardMaterial color="#f5f2e9" roughness={0.9} />
+      <mesh position={[0, 0.01, -5.2]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[1.5, 42]} />
+        <meshBasicMaterial color="#d17d4e" transparent opacity={0.45} />
       </mesh>
-      <mesh position={[0, 7.72, -12]} rotation={[0, 0, 0]}>
-        <boxGeometry args={[0.12, 0.12, 74]} />
-        <meshBasicMaterial color="#e5a866" />
+      <mesh position={[17, 0.01, -6]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[0.9, 15]} />
+        <meshBasicMaterial color="#d17d4e" transparent opacity={0.28} />
       </mesh>
-      {walls.map((wall, index) => (
-        <PolygonWall key={`${wall.side}-${index}`} {...wall} />
-      ))}
-      {[5.5, -2.5, -10.5, -18.5, -26.5, -34.5].map((z, index) => (
-        <group key={z}>
-          <mesh position={[0, 0.015, z]} rotation={[-Math.PI / 2, 0, index % 2 ? 0.04 : -0.04]}>
-            <planeGeometry args={[0.18, 4.5]} />
-            <meshBasicMaterial color="#dc8a45" transparent opacity={0.78} />
-          </mesh>
-          <mesh position={[0, 7.55, z]}>
-            <boxGeometry args={[2.5, 0.08, 2.8]} />
-            <meshBasicMaterial color="#fff7dd" transparent opacity={0.62} />
-          </mesh>
-        </group>
-      ))}
-      <mesh position={[0, 4, -42]} rotation={[0, 0, 0]}>
-        <boxGeometry args={[12, 8, 0.3]} />
-        <meshStandardMaterial color="#e0d9cb" roughness={0.86} />
-      </mesh>
-      <mesh position={[-4.24, 3.6, -42]} rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[7, 5.2]} />
-        <meshBasicMaterial color="#f5bd7e" transparent opacity={0.28} />
-      </mesh>
+      {[-2, 3.5, 9, 14.5].map((z) => <CeilingLight key={`entrance-light-${z}`} position={[0, 7.15, z]} width={3.2} />)}
+      {[-1, 4.5, 10, 15.5].map((z) => <CeilingLight key={`gallery-light-${z}`} position={[0, 7.55, z - 10]} width={3.8} />)}
+      {[-19, -24, -29].map((z) => <CeilingLight key={`archive-light-${z}`} position={[0, 5.68, z]} width={2.5} />)}
+      <pointLight position={[0, 4.1, 7]} intensity={5} distance={13} color="#ffc785" />
+      <pointLight position={[-7, 3.2, -8]} intensity={3.2} distance={9} color="#f1b275" />
+      <pointLight position={[18, 3.2, -6]} intensity={3.2} distance={10} color="#e9a56d" />
     </group>
   )
 }
 
-function PolygonWall({
-  side,
-  position,
-  angle,
-  hue,
-}: {
-  side: 'left' | 'right'
-  position: [number, number, number]
-  angle: number
-  hue: string
-}) {
-  const shape = useMemo(() => {
-    const wallShape = new THREE.Shape()
-    wallShape.moveTo(-5.6, 0)
-    wallShape.lineTo(5.6, 0)
-    wallShape.lineTo(5.6, 4.75)
-    wallShape.lineTo(3.9, 5.9)
-    wallShape.lineTo(1.3, 5.4)
-    wallShape.lineTo(-1.2, 6.05)
-    wallShape.lineTo(-3.9, 5.35)
-    wallShape.lineTo(-5.6, 5.8)
-    wallShape.closePath()
-    return wallShape
-  }, [])
-
+function RoomShell({ room }: { room: Room }) {
+  const width = room.bounds.maxX - room.bounds.minX
+  const depth = room.bounds.maxZ - room.bounds.minZ
+  const centerX = (room.bounds.minX + room.bounds.maxX) / 2
+  const centerZ = (room.bounds.minZ + room.bounds.maxZ) / 2
   return (
-    <group position={position} rotation={[0, (side === 'left' ? -Math.PI / 2 : Math.PI / 2) + angle, 0]}>
-      <mesh castShadow receiveShadow>
-        <extrudeGeometry args={[shape, { depth: 0.56, bevelEnabled: false }]} />
-        <meshStandardMaterial color={hue} roughness={0.84} metalness={0.02} />
+    <group>
+      <mesh position={[centerX, -0.1, centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[width, depth]} />
+        <meshStandardMaterial color={room.floorColor} roughness={0.98} />
       </mesh>
-      <mesh position={[0, 3.45, -0.31]} rotation={[0, 0, 0]}>
-        <planeGeometry args={[10.5, 0.08]} />
-        <meshBasicMaterial color="#f0c28c" transparent opacity={0.7} />
+      <mesh position={[centerX, room.ceilingHeight, centerZ]} rotation={[Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[width, depth]} />
+        <meshStandardMaterial color="#e7e2d6" roughness={0.93} />
+      </mesh>
+      <mesh position={[centerX, 0.015, centerZ]} rotation={[-Math.PI / 2, 0, 0]}>
+        <planeGeometry args={[width * 0.7, depth * 0.84]} />
+        <meshStandardMaterial color={room.carpetColor} roughness={1} />
       </mesh>
     </group>
   )
 }
 
-function ExhibitPanel({
+function WallSurfaceMesh({ wall }: { wall: WallSurface }) {
+  const rotationY = Math.atan2(wall.normal[0], wall.normal[2])
+  return (
+    <group position={wall.origin} rotation={[0, rotationY, 0]}>
+      <mesh position={[0, wall.height / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[wall.width, wall.height, wall.thickness]} />
+        <meshStandardMaterial color={wall.style.color} roughness={wall.style.roughness} />
+      </mesh>
+      <mesh position={[0, 0.24, wall.thickness / 2 + 0.015]}>
+        <boxGeometry args={[wall.width - 0.12, 0.18, 0.055]} />
+        <meshStandardMaterial color={wall.style.baseboardColor} roughness={0.7} />
+      </mesh>
+      <mesh position={[0, wall.height - 0.12, wall.thickness / 2 + 0.015]}>
+        <boxGeometry args={[wall.width - 0.12, 0.08, 0.045]} />
+        <meshBasicMaterial color={wall.style.trimColor} />
+      </mesh>
+      <mesh position={[0, wall.height * 0.56, wall.thickness / 2 + 0.03]}>
+        <boxGeometry args={[wall.width * 0.72, 0.025, 0.025]} />
+        <meshBasicMaterial color="#d38b54" transparent opacity={0.42} />
+      </mesh>
+    </group>
+  )
+}
+
+function CeilingLight({ position, width }: { position: [number, number, number]; width: number }) {
+  return (
+    <group position={position}>
+      <mesh>
+        <boxGeometry args={[width, 0.06, 0.55]} />
+        <meshStandardMaterial color="#f4f0df" emissive="#fff0bd" emissiveIntensity={1.4} />
+      </mesh>
+      <pointLight position={[0, -0.15, 0]} intensity={1.1} distance={7} color="#ffe2a8" />
+    </group>
+  )
+}
+
+function PictureFrame({
   exhibit,
+  placement,
   texture,
   focused,
   onRead,
 }: {
   exhibit: Exhibit
+  placement?: ResolvedHangingPoint
   texture?: THREE.CanvasTexture
   focused: boolean
   onRead: (id: ExhibitId) => void
 }) {
+  if (!placement) return null
+  const { frame, position, rotationY } = placement
+  const innerWidth = frame.width - frame.border * 2
+  const innerHeight = frame.height - frame.border * 2
+
   return (
-    <group position={exhibit.wallPosition} rotation={[0, exhibit.wallRotation, 0]}>
-      <mesh position={[0, 0, -0.16]} castShadow>
-        <boxGeometry args={[4.72, 3.72, 0.18]} />
-        <meshStandardMaterial color={focused ? '#f5c47d' : '#eee8db'} roughness={0.55} />
+    <group
+      name={`exhibit-frame:${exhibit.id}`}
+      position={position}
+      rotation={[0, rotationY, 0]}
+      userData={{ exhibitId: exhibit.id }}
+    >
+      <mesh castShadow>
+        <boxGeometry args={[frame.width, frame.height, frame.depth]} />
+        <meshStandardMaterial color={focused ? '#f2bd78' : frame.material} roughness={0.48} />
       </mesh>
       <mesh
-        position={[0, 0, 0.02]}
+        name={`exhibit-surface:${exhibit.id}`}
+        position={[0, 0, frame.depth / 2 + 0.012]}
+        userData={{ exhibitId: exhibit.id, interactiveExhibitId: exhibit.id }}
         onClick={(event) => {
           event.stopPropagation()
           onRead(exhibit.id)
         }}
         onPointerDown={(event) => event.stopPropagation()}
       >
-        <planeGeometry args={[4.42, 3.42]} />
+        <planeGeometry args={[innerWidth, innerHeight]} />
         {texture ? (
           <meshBasicMaterial map={texture} toneMapped={false} />
         ) : (
-          <meshStandardMaterial color="#fbfaf5" roughness={0.75} />
+          <meshStandardMaterial color={frame.matColor} roughness={0.75} />
         )}
       </mesh>
-      <mesh position={[0, -2.02, 0]}>
-        <boxGeometry args={[3.2, 0.05, 0.05]} />
+      <mesh position={[0, -frame.height / 2 - 0.15, 0.02]}>
+        <boxGeometry args={[frame.width * 0.68, 0.05, 0.05]} />
         <meshBasicMaterial color={exhibit.accent} />
       </mesh>
-      <mesh position={[0, 2.02, 0]}>
+      <mesh position={[0, frame.height / 2 + 0.14, 0.02]}>
         <boxGeometry args={[0.85, 0.06, 0.06]} />
         <meshBasicMaterial color={exhibit.accent} />
       </mesh>
       {focused && (
-        <mesh position={[0, 0, 0.08]}>
-          <planeGeometry args={[4.62, 3.62]} />
-          <meshBasicMaterial color={exhibit.accent} transparent opacity={0.08} />
+        <mesh position={[0, 0, frame.depth / 2 + 0.02]}>
+          <planeGeometry args={[innerWidth + 0.08, innerHeight + 0.08]} />
+          <meshBasicMaterial color={exhibit.accent} transparent opacity={0.12} />
         </mesh>
       )}
     </group>
@@ -375,14 +391,16 @@ function WalkController({
   input,
   onFocus,
   onRead,
+  activationRef,
 }: {
   active: boolean
   focusedId: ExhibitId | null
   input: React.MutableRefObject<ControlInput>
   onFocus: (id: ExhibitId | null) => void
   onRead: (id: ExhibitId) => void
+  activationRef: React.MutableRefObject<ActivateExhibit>
 }) {
-  const { camera, gl } = useThree()
+  const { camera, gl, scene } = useThree()
   const keys = useRef(new Set<string>())
   const yaw = useRef(0)
   const pitch = useRef(-0.03)
@@ -447,26 +465,39 @@ function WalkController({
     pitch.current = THREE.MathUtils.clamp(pitch.current - lookY * delta * 1.35, -0.72, 0.58)
 
     const movement = calculateMovementDelta(yaw.current, moveX, moveY, 4.4 * delta)
-    camera.position.x += movement.x
-    camera.position.z += movement.z
-    camera.position.x = THREE.MathUtils.clamp(camera.position.x, -3.8, 3.8)
-    camera.position.z = THREE.MathUtils.clamp(camera.position.z, -39, 13.5)
+    const [nextX, nextZ] = resolveWalkMovement(
+      camera.position.x,
+      camera.position.z,
+      camera.position.x + movement.x,
+      camera.position.z + movement.z,
+    )
+    camera.position.x = nextX
+    camera.position.z = nextZ
     camera.position.y = 2.2
     camera.rotation.order = 'YXZ'
     camera.rotation.y = yaw.current
     camera.rotation.x = pitch.current
 
     let nearest: ExhibitId | null = null
-    let nearestDistance = 7.2
+    let nearestDistance = Number.POSITIVE_INFINITY
     for (const exhibit of exhibits) {
-      const distance = scratch.set(...exhibit.wallPosition).distanceTo(camera.position)
-      if (distance < nearestDistance) {
+      const placement = resolvedPlacements.get(exhibit.id)
+      if (!placement) continue
+      const distance = scratch.set(...placement.position).distanceTo(camera.position)
+      const frameObject = scene.getObjectByName(`exhibit-frame:${exhibit.id}`)
+      const canFocus = frameObject ? canActivateExhibit(camera, frameObject, scene) : false
+      if (canFocus && distance < nearestDistance) {
         nearest = exhibit.id
         nearestDistance = distance
       }
     }
     if (nearest !== focusedId) onFocus(nearest)
-  })
+
+    activationRef.current = (id) => {
+      const frameObject = scene.getObjectByName(`exhibit-frame:${id}`)
+      return frameObject ? canActivateExhibit(camera, frameObject, scene) : false
+    }
+   })
 
   return null
 }

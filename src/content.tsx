@@ -9,8 +9,6 @@ export type Exhibit = {
   title: string
   deck: string
   meta: string
-  wallPosition: [number, number, number]
-  wallRotation: number
   accent: string
 }
 
@@ -22,8 +20,6 @@ export const exhibits: Exhibit[] = [
     title: 'A builder between models and worlds.',
     deck: 'A short CV for a long-running curiosity.',
     meta: 'ZJU 26 / CUHK MSc AI / PHY XIFORMA CEO',
-    wallPosition: [-4.36, 3.05, 4.4],
-    wallRotation: Math.PI / 2,
     accent: '#d17837',
   },
   {
@@ -33,8 +29,6 @@ export const exhibits: Exhibit[] = [
     title: 'Serious 3D assets for agentic interfaces.',
     deck: 'Research notes on giving language models a body in space.',
     meta: 'OPEN SOURCE / 2024 - NOW',
-    wallPosition: [4.36, 3.05, -8.3],
-    wallRotation: -Math.PI / 2,
     accent: '#426f63',
   },
   {
@@ -44,8 +38,6 @@ export const exhibits: Exhibit[] = [
     title: 'The interface is the territory.',
     deck: 'A field note on why tools should feel more like places.',
     meta: 'ESSAY / 08 MIN READ / 2025.06',
-    wallPosition: [-4.36, 3.05, -20.8],
-    wallRotation: Math.PI / 2,
     accent: '#b34a4d',
   },
 ]

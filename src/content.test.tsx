@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ExhibitArticle, exhibits, getExhibit } from './content'
+import { museumLayout, resolveAllPlacements } from './layout'
 
 describe('museum content', () => {
   it('contains a complete three-stop route', () => {
     expect(exhibits).toHaveLength(3)
     expect(exhibits.map((exhibit) => exhibit.id)).toEqual(['about', 'work', 'writing'])
-    expect(new Set(exhibits.map((exhibit) => exhibit.wallPosition[2])).size).toBe(3)
+    const placements = resolveAllPlacements(museumLayout)
+    expect(new Set(exhibits.map((exhibit) => placements.get(exhibit.id)?.wall.id))).toEqual(
+      new Set(['entrance-west', 'gallery-west', 'side-north']),
+    )
   })
 
   it('returns a known exhibit and rejects invalid identifiers', () => {

@@ -100,6 +100,11 @@ button { color: inherit; }
 .texture-card .article-callout p { font-size: 11px; line-height: 1.3; }
 .texture-card .article-footer { padding: 8px 32px; font-size: 6px; }
 
+@media (pointer: coarse), (hover: none) {
+  .touch-controls { display: flex; }
+  .read-prompt { bottom: 152px; }
+}
+
 @media (max-width: 700px) {
   .site-header { padding: 20px 20px; }
   .header-meta span:first-child, .scene-labels span:last-child, .hud-controls { display: none; }
@@ -111,7 +116,6 @@ button { color: inherit; }
   .welcome-footer { flex-direction: column; gap: 8px; margin-top: 25px; }
   .visit-hud { top: 70px; left: 20px; right: 20px; }
   .read-prompt { right: 20px; bottom: 152px; left: 20px; min-width: 0; }
-  .touch-controls { display: flex; }
   .reading-sheet { width: calc(100% - 20px); height: calc(100% - 20px); }
   .reading-toolbar { padding: 13px 15px; }
   .reading-scroll { padding: 25px 20px; }
