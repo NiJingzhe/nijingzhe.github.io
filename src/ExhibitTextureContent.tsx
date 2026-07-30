@@ -25,3 +25,31 @@ export function routeHTMLTextureClick(
 export function isolateHTMLTexturePointerEvent(event: Event) {
   event.stopPropagation()
 }
+
+export function isAboutWallInteractive(
+  started: boolean,
+  reading: boolean,
+  focusedId: ExhibitId | null,
+  htmlInCanvasSupported: boolean,
+) {
+  return started && !reading && focusedId === 'about' && htmlInCanvasSupported
+}
+
+export function syncHTMLTextureAccessibility(element: HTMLElement, interactive: boolean) {
+  element.inert = !interactive
+  element.setAttribute('aria-hidden', String(!interactive))
+
+  if (!interactive && element.contains(document.activeElement)) {
+    const focusedElement = document.activeElement as HTMLElement
+    focusedElement.blur()
+  }
+}
+
+export function releasePointerLockForHTMLTextureInteraction(
+  canvas: HTMLCanvasElement,
+  interactive: boolean,
+  pointerLockElement: Element | null,
+  exitPointerLock: () => void,
+) {
+  if (interactive && pointerLockElement === canvas) exitPointerLock()
+}

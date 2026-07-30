@@ -1,5 +1,5 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import * as THREE from 'three'
@@ -7,8 +7,11 @@ import { InteractionManager } from 'three/addons/interaction/InteractionManager.
 import { exhibits, type Exhibit, type ExhibitId } from './content'
 import {
   ExhibitTextureContent,
+  isAboutWallInteractive,
   isolateHTMLTexturePointerEvent,
+  releasePointerLockForHTMLTextureInteraction,
   routeHTMLTextureClick,
+  syncHTMLTextureAccessibility,
 } from './ExhibitTextureContent'
 import {
   detectNativeHTMLInCanvas,
@@ -43,6 +46,12 @@ function App() {
   const supportsTouch = useTouchControls()
 
   const readingExhibit = readingId ? exhibits.find((exhibit) => exhibit.id === readingId) : null
+  const aboutWallInteractive = isAboutWallInteractive(
+    started,
+    Boolean(readingId),
+    focusedId,
+    htmlInCanvasSupport?.supported === true,
+  )
 
   useEffect(() => {
     if (started) return
@@ -120,6 +129,7 @@ function App() {
           />
           <HTMLTextureInteractionController
             enabled={htmlInCanvasSupport?.supported === true && Boolean(textures.about)}
+            interactive={aboutWallInteractive}
           />
         </Canvas>
 
@@ -195,7 +205,7 @@ function App() {
           <TextureSource
             key={exhibit.id}
             exhibit={exhibit}
-            interactive={exhibit.id === 'about' && focusedId === 'about'}
+            interactive={exhibit.id === 'about' && aboutWallInteractive}
             onRead={requestReading}
             onTexture={handleTexture}
           />
@@ -239,12 +249,13 @@ function TextureSource({
   const [element] = useState(() => {
     const source = document.createElement('div')
     source.className = 'texture-card'
-    if (exhibit.id !== 'about') source.setAttribute('aria-hidden', 'true')
+    syncHTMLTextureAccessibility(source, false)
     return source
   })
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     element.classList.toggle('is-interactive', interactive)
+    syncHTMLTextureAccessibility(element, interactive)
   }, [element, interactive])
 
   useEffect(() => {
@@ -271,9 +282,18 @@ function TextureSource({
   return createPortal(<ExhibitTextureContent exhibit={exhibit} />, element)
 }
 
-function HTMLTextureInteractionController({ enabled }: { enabled: boolean }) {
+function HTMLTextureInteractionController({ enabled, interactive }: { enabled: boolean; interactive: boolean }) {
   const { camera, gl, scene } = useThree()
   const interactions = useMemo(() => new InteractionManager(), [])
+
+  useEffect(() => {
+    releasePointerLockForHTMLTextureInteraction(
+      gl.domElement,
+      interactive,
+      document.pointerLockElement,
+      () => document.exitPointerLock?.(),
+    )
+  }, [gl.domElement, interactive])
 
   useEffect(() => {
     if (!enabled) return
