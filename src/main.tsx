@@ -1,18 +1,24 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import * as THREE from 'three'
 import { ExhibitArticle, exhibits, type Exhibit, type ExhibitId } from './content'
+import {
+  detectNativeHTMLInCanvas,
+  getHTMLInCanvasNotice,
+  SharedCanvasHTMLTexture,
+  type HTMLInCanvasSupport,
+} from './htmlInCanvas'
 import { hasFinePointer, useTouchControls } from './inputCapabilities'
 import { canActivateExhibit } from './interaction'
 import { layoutErrors, museumLayout, resolveAllPlacements, resolveWalkMovement, type ResolvedHangingPoint, type Room, type WallSurface } from './layout'
 import { calculateMovementDelta } from './movement'
 import { ReadingDialog } from './ReadingDialog'
 import { TouchControls, type ControlInput } from './TouchControls'
-import { createTextureTask } from './textureTask'
 import './style.css'
 
-type TextureMap = Partial<Record<ExhibitId, THREE.CanvasTexture>>
+type TextureMap = Partial<Record<ExhibitId, THREE.HTMLTexture>>
 type ActivateExhibit = (id: ExhibitId) => boolean
 
 const initialInput: ControlInput = { move: { x: 0, y: 0 }, look: { x: 0, y: 0 } }
@@ -23,6 +29,7 @@ function App() {
   const [focusedId, setFocusedId] = useState<ExhibitId | null>(null)
   const [readingId, setReadingId] = useState<ExhibitId | null>(null)
   const [textures, setTextures] = useState<TextureMap>({})
+  const [htmlInCanvasSupport, setHTMLInCanvasSupport] = useState<HTMLInCanvasSupport | null>(null)
   const input = useRef<ControlInput>(initialInput)
   const activationRef = useRef<ActivateExhibit>(() => false)
   const stageRef = useRef<HTMLDivElement>(null)
@@ -40,7 +47,7 @@ function App() {
     if (layoutErrors.length > 0) console.error('Museum layout is invalid', layoutErrors)
   }, [])
 
-  const handleTexture = useCallback((id: ExhibitId, texture: THREE.CanvasTexture) => {
+  const handleTexture = useCallback((id: ExhibitId, texture: THREE.HTMLTexture) => {
     setTextures((current) => ({ ...current, [id]: texture }))
   }, [])
 
@@ -69,7 +76,10 @@ function App() {
           tabIndex={0}
           aria-label="Interactive museum scene"
           onPointerMissed={() => setFocusedId(null)}
-          onCreated={({ camera }) => camera.lookAt(0, 2.1, 4)}
+          onCreated={({ camera, gl }) => {
+            camera.lookAt(0, 2.1, 4)
+            setHTMLInCanvasSupport(detectNativeHTMLInCanvas(gl.domElement, gl.getContext()))
+          }}
         >
           <color attach="background" args={['#ede9df']} />
           <fog attach="fog" args={['#ede9df', 25, 72]} />
@@ -168,11 +178,13 @@ function App() {
           </>
         )}
 
-        <div className="texture-sources" aria-hidden="true">
-          {exhibits.map((exhibit) => (
-            <TextureSource key={exhibit.id} exhibit={exhibit} onTexture={handleTexture} />
-          ))}
-        </div>
+        {htmlInCanvasSupport && !htmlInCanvasSupport.supported && (
+          <HTMLInCanvasCompatibilityNotice reason={htmlInCanvasSupport.reason} />
+        )}
+
+        {htmlInCanvasSupport?.supported && exhibits.map((exhibit) => (
+          <TextureSource key={exhibit.id} exhibit={exhibit} onTexture={handleTexture} />
+        ))}
       </div>
       {readingExhibit && (
         <ReadingDialog
@@ -186,53 +198,46 @@ function App() {
   )
 }
 
+function HTMLInCanvasCompatibilityNotice({ reason }: { reason: Extract<HTMLInCanvasSupport, { supported: false }>['reason'] }) {
+  const notice = getHTMLInCanvasNotice(reason)
+
+  return (
+    <aside className="html-in-canvas-notice" role="status">
+      <strong>{notice.title}</strong>
+      <span>{notice.message}</span>
+      {notice.flag && <span>Enable <code>{notice.flag}</code> in Chrome.</span>}
+    </aside>
+  )
+}
+
 function TextureSource({
   exhibit,
   onTexture,
 }: {
   exhibit: Exhibit
-  onTexture: (id: ExhibitId, texture: THREE.CanvasTexture) => void
+  onTexture: (id: ExhibitId, texture: THREE.HTMLTexture) => void
 }) {
-  const sourceRef = useRef<HTMLDivElement>(null)
+  const [element] = useState(() => {
+    const source = document.createElement('div')
+    source.className = 'texture-card'
+    source.setAttribute('aria-hidden', 'true')
+    return source
+  })
 
   useEffect(() => {
-    const textureTask = createTextureTask(
-      async () => {
-        if (!sourceRef.current) throw new Error('Texture source did not mount')
-        if (document.fonts) await document.fonts.ready
-        const { default: html2canvas } = await import('html2canvas')
-        const canvas = await html2canvas(sourceRef.current, {
-          backgroundColor: '#fbfaf5',
-          height: 650,
-          scale: 1,
-          logging: false,
-          useCORS: true,
-          width: 840,
-        })
-        const texture = new THREE.CanvasTexture(canvas)
-        texture.colorSpace = THREE.SRGBColorSpace
-        texture.minFilter = THREE.LinearFilter
-        texture.magFilter = THREE.LinearFilter
-        texture.needsUpdate = true
-        return texture
-      },
-      (texture) => onTexture(exhibit.id, texture),
-    )
-
-    void textureTask.run().catch((error: unknown) => {
-      if (!textureTask.isCancelled()) console.warn(`Could not rasterize ${exhibit.id} exhibit`, error)
-    })
+    const texture = new SharedCanvasHTMLTexture(element)
+    texture.colorSpace = THREE.SRGBColorSpace
+    texture.minFilter = THREE.LinearFilter
+    texture.magFilter = THREE.LinearFilter
+    onTexture(exhibit.id, texture)
 
     return () => {
-      textureTask.cancel()
+      texture.dispose()
+      element.remove()
     }
-  }, [exhibit.id, onTexture])
+  }, [element, exhibit.id, onTexture])
 
-  return (
-    <div ref={sourceRef} className="texture-card">
-      <ExhibitArticle exhibit={exhibit} />
-    </div>
-  )
+  return createPortal(<ExhibitArticle exhibit={exhibit} />, element)
 }
 
 function MuseumArchitecture() {
@@ -330,7 +335,7 @@ function PictureFrame({
 }: {
   exhibit: Exhibit
   placement?: ResolvedHangingPoint
-  texture?: THREE.CanvasTexture
+  texture?: THREE.HTMLTexture
   focused: boolean
   onRead: (id: ExhibitId) => void
 }) {

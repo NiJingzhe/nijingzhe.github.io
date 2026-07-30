@@ -21,7 +21,7 @@ button { color: inherit; }
 .museum-app, .museum-stage { width: 100%; height: 100%; position: relative; overflow: hidden; background: #ede9df; }
 .museum-app canvas { display: block; width: 100% !important; height: 100% !important; cursor: crosshair; }
 
-.site-header, .scene-labels, .visit-hud, .crosshair, .welcome-panel, .read-prompt, .touch-controls, .reading-overlay { position: absolute; z-index: 5; }
+.site-header, .scene-labels, .visit-hud, .crosshair, .welcome-panel, .read-prompt, .touch-controls, .reading-overlay, .html-in-canvas-notice { position: absolute; z-index: 5; }
 
 .site-header { top: 0; left: 0; right: 0; padding: 28px 36px; display: flex; justify-content: space-between; align-items: center; pointer-events: none; }
 .wordmark { display: inline-flex; align-items: center; gap: 10px; color: #242823; text-decoration: none; font-size: 12px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; pointer-events: auto; }
@@ -51,6 +51,9 @@ button { color: inherit; }
 .read-prompt strong { font-size: 11px; letter-spacing: .05em; text-transform: uppercase; }
 .read-prompt small { margin-top: 4px; color: #7b8078; font-family: 'DM Mono', monospace; font-size: 8px; }
 .prompt-arrow { margin-left: auto; color: #bd654e; font-size: 19px; }
+.html-in-canvas-notice { right: 36px; bottom: 32px; display: grid; gap: 6px; max-width: 390px; padding: 12px 15px; border: 1px solid rgba(41,51,42,.36); background: rgba(248,244,232,.94); box-shadow: 0 13px 35px rgba(57,53,43,.12); color: #566057; font-size: 10px; line-height: 1.5; }
+.html-in-canvas-notice strong { color: #b35d3f; font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: .08em; }
+.html-in-canvas-notice code { color: #29332a; font-family: 'DM Mono', monospace; font-size: 9px; }
 
 .touch-controls { display: flex; left: 0; right: 0; bottom: max(28px, env(safe-area-inset-bottom)); justify-content: space-between; padding: 0 max(28px, env(safe-area-inset-right)) 0 max(28px, env(safe-area-inset-left)); pointer-events: none; }
 .joystick { position: relative; width: 94px; height: 94px; border: 1px solid rgba(41,51,42,.3); border-radius: 50%; background: rgba(248,244,232,.22); pointer-events: auto; touch-action: none; }
@@ -83,7 +86,6 @@ button { color: inherit; }
 .article-callout p { margin: 0; color: #4b584b; font-size: 17px; line-height: 1.4; }
 .article-footer { display: flex; justify-content: space-between; padding: 15px 48px; border-top: 1px solid #d9d7cf; color: #8c9289; font-family: 'DM Mono', monospace; font-size: 8px; letter-spacing: .1em; }
 
-.texture-sources { position: fixed; z-index: -1; top: 0; left: -10000px; display: flex; gap: 40px; width: max-content; pointer-events: none; }
 .texture-card { width: 840px; height: 650px; overflow: hidden; background: #fbfaf5; }
 .texture-card .article-content { display: grid; grid-template-rows: auto 1fr auto; width: 840px; height: 650px; }
 .texture-card .article-header { padding: 25px 32px 19px; }
@@ -116,6 +118,7 @@ button { color: inherit; }
   .welcome-footer { flex-direction: column; gap: 8px; margin-top: 25px; }
   .visit-hud { top: 70px; left: 20px; right: 20px; }
   .read-prompt { right: 20px; bottom: 152px; left: 20px; min-width: 0; }
+  .html-in-canvas-notice { right: 20px; bottom: 19px; left: 20px; max-width: none; }
   .reading-sheet { width: calc(100% - 20px); height: calc(100% - 20px); }
   .reading-toolbar { padding: 13px 15px; }
   .reading-scroll { padding: 25px 20px; }

@@ -18,6 +18,14 @@ npm ci
 npm run dev
 ```
 
+Wall exhibits use Chromium's experimental native [HTML-in-Canvas API](https://github.com/WICG/html-in-canvas)
+through `THREE.HTMLTexture`. Enable `chrome://flags/#canvas-draw-element` in Chrome before opening
+the site. Detection requires both `HTMLCanvasElement.requestPaint` and the 3- or 6-argument
+`WebGLRenderingContext.texElementImage2D` contract supported by Three.js 0.185. Chromium builds
+with the experiment disabled receive the flag instruction; other browsers receive a browser-specific
+compatibility notice instead. There is no screenshot fallback, and the HTML reading dialog remains
+available.
+
 Production output can be verified with:
 
 ```bash
@@ -39,21 +47,21 @@ npm run preview
 ## Content Model
 
 Exhibits are described by the `exhibits` array in `src/content.tsx`. Each entry owns its label,
-title, metadata, wall location, and an HTML article component. `TextureSource` renders that same
-article into an offscreen DOM node, rasterizes it with `html2canvas`, and supplies the resulting
-`CanvasTexture` to the Three.js wall panel. Reading mode reuses the exact article component as
-responsive HTML, so the wall and reader cannot drift apart.
+title, metadata, wall location, and an HTML article component. `TextureSource` portals that same
+article into an `HTMLTexture` element that Three.js attaches directly to the WebGL canvas. Native
+canvas paint events keep the wall texture current without an intermediate bitmap. Reading mode
+reuses the exact article component as responsive HTML, so the wall and reader cannot drift apart.
 
 ## Architecture
 
 - `src/main.tsx`: React application shell, R3F canvas, scene components, controls, and reading UI.
 - `src/content.tsx`: typed exhibit data and the three complete article bodies.
-- `src/style.css`: museum UI, responsive reader, and offscreen article styling.
+- `src/style.css`: museum UI, responsive reader, and wall article styling.
 - `src/content.test.tsx`: route and content invariants.
 - `src/movement.ts`: camera-local movement math, with yaw and diagonal-normalization coverage.
 - `src/inputCapabilities.ts`: pointer-capability detection for desktop, touch, and hybrid controls.
 - `src/ReadingDialog.tsx`: modal reader focus management and background isolation.
-- `src/textureTask.ts`: cancellable HTML-to-canvas texture lifecycle.
+- `src/htmlInCanvas.ts`: native HTML-in-Canvas capability detection.
 
 The deployment workflow targets `ubuntu-22.04` runners and publishes the Vite `dist` directory to
 GitHub Pages on every push to `main`.
