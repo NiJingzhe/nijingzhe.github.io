@@ -29,9 +29,12 @@ npm run preview
 
 - Desktop: click **ENTER THE MUSEUM**, then use `WASD` or the arrow keys to move. Click the scene
   to capture the pointer, move the mouse to look, and press `F` when you are near an exhibit.
-- Mobile: tap **ENTER THE MUSEUM**, use the left virtual joystick to move and the right pad to look.
-  When you are near an exhibit, tap the reading prompt or the scene to open it.
-- Reading mode: press `Escape`, click **CLOSE**, or click the backdrop to return to the room.
+- Touch and hybrid devices: the left virtual joystick moves, the right pad looks, and the reading
+  prompt says **TAP**. Controls are selected from pointer capability, not screen width, so tablet
+  and landscape-phone layouts remain navigable.
+- Reading mode: press `Escape`, click **CLOSE**, or click the backdrop to return to the room. The
+  reader keeps keyboard focus inside the dialog, hides the scene from assistive technology, and
+  restores focus to the trigger when closed.
 
 ## Content Model
 
@@ -47,6 +50,10 @@ responsive HTML, so the wall and reader cannot drift apart.
 - `src/content.tsx`: typed exhibit data and the three complete article bodies.
 - `src/style.css`: museum UI, responsive reader, and offscreen article styling.
 - `src/content.test.tsx`: route and content invariants.
+- `src/movement.ts`: camera-local movement math, with yaw and diagonal-normalization coverage.
+- `src/inputCapabilities.ts`: pointer-capability detection for desktop, touch, and hybrid controls.
+- `src/ReadingDialog.tsx`: modal reader focus management and background isolation.
+- `src/textureTask.ts`: cancellable HTML-to-canvas texture lifecycle.
 
 The deployment workflow targets `ubuntu-22.04` runners and publishes the Vite `dist` directory to
 GitHub Pages on every push to `main`.
