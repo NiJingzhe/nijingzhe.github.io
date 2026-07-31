@@ -35,8 +35,10 @@ npm run preview
 
 ## Interaction
 
-- Desktop: click **ENTER THE MUSEUM**, then use `WASD` or the arrow keys to move. Click the scene
-  to capture the pointer, move the mouse to look, and press `F` when you are near an exhibit.
+- Desktop: click **ENTER THE MUSEUM**, then use `WASD` or the arrow keys to move while pointer lock
+  keeps mouse look centered. Aim the crosshair at an exhibit and click or press `F`; empty clicks
+  only enter or preserve pointer lock. The About exhibit's GitHub CTA is selected through the same
+  center ray rather than a separate DOM cursor mode.
 - Touch and hybrid devices: the left virtual joystick moves, the right pad looks, and the reading
   prompt says **TAP**. Controls are selected from pointer capability, not screen width, so tablet
   and landscape-phone layouts remain navigable.
@@ -51,10 +53,11 @@ title, metadata, wall location, and an HTML article component. `TextureSource` p
 article into an `HTMLTexture` element that Three.js attaches directly to the WebGL canvas. Native
 canvas paint events keep the wall texture current without an intermediate bitmap. Reading mode
 reuses the exact article component as responsive HTML, so the wall and reader cannot drift apart.
-The CV surface is registered with Three.js `InteractionManager`, keeping its native GitHub link
-aligned with the 3D plane for pointer and keyboard interaction while the surrounding surface retains
-the existing exhibit-reading behavior. Its live pulse and scan line exercise native paint updates;
-both animations stop under `prefers-reduced-motion`.
+The first-person interaction model raycasts from the camera center into the exhibit surface. The
+About exhibit maps the hit UV to the real GitHub link's measured rectangle in the shared article,
+so the crosshair can distinguish GitHub from reading without enabling DOM pointer interaction or
+duplicating content. Its live pulse and scan line exercise native paint updates; both animations stop
+under `prefers-reduced-motion`.
 
 ## Architecture
 
@@ -64,6 +67,7 @@ both animations stop under `prefers-reduced-motion`.
 - `src/content.test.tsx`: route and content invariants.
 - `src/movement.ts`: camera-local movement math, with yaw and diagonal-normalization coverage.
 - `src/inputCapabilities.ts`: pointer-capability detection for desktop, touch, and hybrid controls.
+- `src/interaction.ts`: center-ray target resolution, CTA UV mapping, and unified input actions.
 - `src/ReadingDialog.tsx`: modal reader focus management and background isolation.
 - `src/htmlInCanvas.ts`: native HTML-in-Canvas capability detection.
 

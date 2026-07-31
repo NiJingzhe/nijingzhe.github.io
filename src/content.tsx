@@ -89,7 +89,7 @@ function AboutArticle() {
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Visit Nijinzhe on GitHub (opens in a new tab)"
-          data-html-texture-control
+          data-crosshair-action="github"
         >
           <span>Explore GitHub</span>
           <span className="github-cta-arrow" aria-hidden="true">↗</span>

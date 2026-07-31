@@ -1,18 +1,10 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import * as THREE from 'three'
-import { InteractionManager } from 'three/addons/interaction/InteractionManager.js'
 import { exhibits, type Exhibit, type ExhibitId } from './content'
-import {
-  ExhibitTextureContent,
-  isAboutWallInteractive,
-  isolateHTMLTexturePointerEvent,
-  releasePointerLockForHTMLTextureInteraction,
-  routeHTMLTextureClick,
-  syncHTMLTextureAccessibility,
-} from './ExhibitTextureContent'
+import { ExhibitTextureContent } from './ExhibitTextureContent'
 import {
   detectNativeHTMLInCanvas,
   getHTMLInCanvasNotice,
@@ -20,7 +12,15 @@ import {
   type HTMLInCanvasSupport,
 } from './htmlInCanvas'
 import { hasFinePointer, useTouchControls } from './inputCapabilities'
-import { canActivateExhibit } from './interaction'
+import {
+  activateCrosshairTarget,
+  getCrosshairTarget,
+  getNormalizedElementRect,
+  resolveCrosshairKeyboardTarget,
+  resolveCrosshairPointerIntent,
+  type CrosshairTarget,
+  type NormalizedRect,
+} from './interaction'
 import { layoutErrors, museumLayout, resolveAllPlacements, resolveWalkMovement, type ResolvedHangingPoint, type Room, type WallSurface } from './layout'
 import { calculateMovementDelta } from './movement'
 import { ReadingDialog } from './ReadingDialog'
@@ -28,34 +28,30 @@ import { TouchControls, type ControlInput } from './TouchControls'
 import './style.css'
 
 type TextureMap = Partial<Record<ExhibitId, THREE.HTMLTexture>>
-type ActivateExhibit = (id: ExhibitId) => boolean
 
 const initialInput: ControlInput = { move: { x: 0, y: 0 }, look: { x: 0, y: 0 } }
 const resolvedPlacements = resolveAllPlacements(museumLayout)
 
 function App() {
   const [started, setStarted] = useState(false)
-  const [focusedId, setFocusedId] = useState<ExhibitId | null>(null)
+  const [crosshairTarget, setCrosshairTarget] = useState<CrosshairTarget | null>(null)
   const [readingId, setReadingId] = useState<ExhibitId | null>(null)
   const [textures, setTextures] = useState<TextureMap>({})
   const [htmlInCanvasSupport, setHTMLInCanvasSupport] = useState<HTMLInCanvasSupport | null>(null)
   const input = useRef<ControlInput>(initialInput)
-  const activationRef = useRef<ActivateExhibit>(() => false)
+  const githubRectRef = useRef<NormalizedRect | null>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const returnFocusRef = useRef<HTMLElement | null>(null)
   const supportsTouch = useTouchControls()
 
   const readingExhibit = readingId ? exhibits.find((exhibit) => exhibit.id === readingId) : null
-  const aboutWallInteractive = isAboutWallInteractive(
-    started,
-    Boolean(readingId),
-    focusedId,
-    htmlInCanvasSupport?.supported === true,
-  )
+  const aimedExhibit = crosshairTarget
+    ? exhibits.find((exhibit) => exhibit.id === crosshairTarget.exhibitId)
+    : null
 
   useEffect(() => {
     if (started) return
-    setFocusedId(null)
+    setCrosshairTarget(null)
   }, [started])
 
   useEffect(() => {
@@ -66,18 +62,36 @@ function App() {
     setTextures((current) => ({ ...current, [id]: texture }))
   }, [])
 
+  const handleGithubRect = useCallback((rect: NormalizedRect | null) => {
+    githubRectRef.current = rect
+  }, [])
+
   const openReading = useCallback((id: ExhibitId, trigger?: HTMLElement | null) => {
     returnFocusRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null)
     setReadingId(id)
     document.exitPointerLock?.()
   }, [])
 
-  const requestReading = useCallback((id: ExhibitId, trigger?: HTMLElement | null) => {
-    if (activationRef.current(id)) openReading(id, trigger)
+  const activateTarget = useCallback((target: CrosshairTarget, trigger?: HTMLElement | null) => {
+    activateCrosshairTarget(
+      target,
+      (id) => openReading(id, trigger),
+      (url, windowTarget, features) => window.open(url, windowTarget, features),
+    )
   }, [openReading])
 
   const beginVisit = () => {
     setStarted(true)
+    if (hasFinePointer(window)) {
+      void stageRef.current?.querySelector('canvas')?.requestPointerLock()
+    }
+  }
+
+  const closeReading = () => {
+    setReadingId(null)
+    if (hasFinePointer(window)) {
+      void stageRef.current?.querySelector('canvas')?.requestPointerLock()
+    }
   }
 
   return (
@@ -90,7 +104,6 @@ function App() {
           gl={{ antialias: true, powerPreference: 'high-performance' }}
           tabIndex={0}
           aria-label="Interactive museum scene"
-          onPointerMissed={() => setFocusedId(null)}
           onCreated={({ camera, gl }) => {
             camera.lookAt(0, 2.1, 4)
             setHTMLInCanvasSupport(detectNativeHTMLInCanvas(gl.domElement, gl.getContext()))
@@ -115,21 +128,14 @@ function App() {
               exhibit={exhibit}
               placement={resolvedPlacements.get(exhibit.id)}
               texture={textures[exhibit.id]}
-              focused={focusedId === exhibit.id}
-              onRead={requestReading}
             />
           ))}
           <WalkController
             active={started && !readingId}
-            focusedId={focusedId}
             input={input}
-            onFocus={setFocusedId}
-            onRead={requestReading}
-            activationRef={activationRef}
-          />
-          <HTMLTextureInteractionController
-            enabled={htmlInCanvasSupport?.supported === true && Boolean(textures.about)}
-            interactive={aboutWallInteractive}
+            githubRectRef={githubRectRef}
+            onTarget={setCrosshairTarget}
+            onActivate={activateTarget}
           />
         </Canvas>
 
@@ -146,7 +152,7 @@ function App() {
 
         <div className="scene-labels" aria-hidden="true">
           <span>ROOM 01</span>
-          <span>WALK / LOOK / READ</span>
+          <span>WALK / AIM / ACT</span>
         </div>
 
         {!started && (
@@ -174,24 +180,29 @@ function App() {
 
         {started && (
           <>
-            <div className="crosshair" aria-hidden="true">
-              <span />
-            </div>
+            {!supportsTouch && (
+              <div
+                className={`crosshair${crosshairTarget ? ` is-${crosshairTarget.action}` : ''}`}
+                aria-hidden="true"
+              >
+                <span />
+              </div>
+            )}
             <div className="visit-hud">
               <span className="hud-status"><i /> LIVE WALKTHROUGH</span>
               <span className="hud-controls">
-                {supportsTouch ? 'LEFT PAD TO MOVE  •  RIGHT PAD TO LOOK' : 'WASD / ARROWS TO MOVE  •  MOUSE TO LOOK'}
+                {supportsTouch
+                  ? 'LEFT PAD TO MOVE  •  RIGHT PAD TO AIM'
+                  : 'WASD TO MOVE  •  MOUSE TO AIM  •  CLICK / F TO ACT'}
               </span>
             </div>
-            {focusedId && (
-              <button className="read-prompt" type="button" onClick={(event) => requestReading(focusedId, event.currentTarget)}>
-                <span className="prompt-key">{supportsTouch ? 'TAP' : 'F'}</span>
-                <span>
-                  <strong>Read exhibit</strong>
-                  <small>{supportsTouch ? 'TAP TO READ' : exhibits.find((exhibit) => exhibit.id === focusedId)?.label}</small>
-                </span>
-                <span className="prompt-arrow">↗</span>
-              </button>
+            {crosshairTarget && aimedExhibit && (
+              <CrosshairPrompt
+                target={crosshairTarget}
+                exhibit={aimedExhibit}
+                supportsTouch={supportsTouch}
+                onActivate={activateTarget}
+              />
             )}
             {supportsTouch && <TouchControls input={input} />}
           </>
@@ -205,9 +216,8 @@ function App() {
           <TextureSource
             key={exhibit.id}
             exhibit={exhibit}
-            interactive={exhibit.id === 'about' && aboutWallInteractive}
-            onRead={requestReading}
             onTexture={handleTexture}
+            onGithubRect={exhibit.id === 'about' ? handleGithubRect : undefined}
           />
         ))}
       </div>
@@ -216,7 +226,7 @@ function App() {
           exhibit={readingExhibit}
           backgroundRef={stageRef}
           returnFocus={returnFocusRef.current}
-          onClose={() => setReadingId(null)}
+          onClose={closeReading}
         />
       )}
     </main>
@@ -235,35 +245,66 @@ function HTMLInCanvasCompatibilityNotice({ reason }: { reason: Extract<HTMLInCan
   )
 }
 
+function CrosshairPrompt({
+  target,
+  exhibit,
+  supportsTouch,
+  onActivate,
+}: {
+  target: CrosshairTarget
+  exhibit: Exhibit
+  supportsTouch: boolean
+  onActivate: (target: CrosshairTarget, trigger?: HTMLElement | null) => void
+}) {
+  const githubAction = target.action === 'github'
+  const content = (
+    <>
+      <span className="prompt-key">{supportsTouch ? 'TAP' : 'F'}</span>
+      <span>
+        <strong>{githubAction ? 'Open GitHub' : 'Read exhibit'}</strong>
+        <small>{githubAction ? 'NIJINZHE / GITHUB' : exhibit.label}</small>
+      </span>
+      <span className="prompt-arrow">↗</span>
+    </>
+  )
+
+  if (!supportsTouch) {
+    return (
+      <div className={`read-prompt${githubAction ? ' is-github' : ''}`} role="status">
+        {content}
+      </div>
+    )
+  }
+
+  return (
+    <button
+      className={`read-prompt${githubAction ? ' is-github' : ''}`}
+      type="button"
+      onClick={(event) => onActivate(target, event.currentTarget)}
+    >
+      {content}
+    </button>
+  )
+}
+
 function TextureSource({
   exhibit,
-  interactive,
-  onRead,
   onTexture,
+  onGithubRect,
 }: {
   exhibit: Exhibit
-  interactive: boolean
-  onRead: (id: ExhibitId) => void
   onTexture: (id: ExhibitId, texture: THREE.HTMLTexture) => void
+  onGithubRect?: (rect: NormalizedRect | null) => void
 }) {
   const [element] = useState(() => {
     const source = document.createElement('div')
     source.className = 'texture-card'
-    syncHTMLTextureAccessibility(source, false)
+    source.inert = true
+    source.setAttribute('aria-hidden', 'true')
     return source
   })
 
-  useLayoutEffect(() => {
-    element.classList.toggle('is-interactive', interactive)
-    syncHTMLTextureAccessibility(element, interactive)
-  }, [element, interactive])
-
   useEffect(() => {
-    const handleClick = (event: Event) => routeHTMLTextureClick(event, exhibit.id, onRead)
-    element.addEventListener('pointerdown', isolateHTMLTexturePointerEvent)
-    element.addEventListener('pointerup', isolateHTMLTexturePointerEvent)
-    element.addEventListener('click', handleClick)
-
     const texture = new SharedCanvasHTMLTexture(element)
     texture.colorSpace = THREE.SRGBColorSpace
     texture.minFilter = THREE.LinearFilter
@@ -271,51 +312,45 @@ function TextureSource({
     onTexture(exhibit.id, texture)
 
     return () => {
-      element.removeEventListener('pointerdown', isolateHTMLTexturePointerEvent)
-      element.removeEventListener('pointerup', isolateHTMLTexturePointerEvent)
-      element.removeEventListener('click', handleClick)
       texture.dispose()
       element.remove()
     }
-  }, [element, exhibit.id, onRead, onTexture])
+  }, [element, exhibit.id, onTexture])
+
+  useEffect(() => {
+    if (!onGithubRect) return
+    let frame = 0
+    let attempts = 0
+    let active = true
+    let observedControl: HTMLElement | null = null
+    const measure = () => {
+      const control = element.querySelector<HTMLElement>('[data-crosshair-action="github"]')
+      if (control && control !== observedControl) {
+        observedControl = control
+        resizeObserver.observe(control)
+      }
+      const rect = control ? getNormalizedElementRect(element, control) : null
+      onGithubRect(rect)
+      if (!rect && attempts < 60) {
+        attempts += 1
+        frame = requestAnimationFrame(measure)
+      }
+    }
+    frame = requestAnimationFrame(measure)
+    const resizeObserver = new ResizeObserver(measure)
+    resizeObserver.observe(element)
+    void document.fonts?.ready.then(() => {
+      if (active) measure()
+    })
+    return () => {
+      active = false
+      cancelAnimationFrame(frame)
+      resizeObserver.disconnect()
+      onGithubRect(null)
+    }
+  }, [element, onGithubRect])
 
   return createPortal(<ExhibitTextureContent exhibit={exhibit} />, element)
-}
-
-function HTMLTextureInteractionController({ enabled, interactive }: { enabled: boolean; interactive: boolean }) {
-  const { camera, gl, scene } = useThree()
-  const interactions = useMemo(() => new InteractionManager(), [])
-
-  useEffect(() => {
-    releasePointerLockForHTMLTextureInteraction(
-      gl.domElement,
-      interactive,
-      document.pointerLockElement,
-      () => document.exitPointerLock?.(),
-    )
-  }, [gl.domElement, interactive])
-
-  useEffect(() => {
-    if (!enabled) return
-    const aboutSurface = scene.getObjectByName('exhibit-surface:about')
-    if (!aboutSurface) return
-
-    interactions.connect(gl, camera)
-    interactions.add(aboutSurface)
-    return () => {
-      interactions.remove(aboutSurface)
-      interactions.disconnect()
-    }
-  }, [camera, enabled, gl, interactions, scene])
-
-  useFrame(() => {
-    if (enabled) {
-      camera.updateMatrixWorld()
-      interactions.update()
-    }
-  })
-
-  return null
 }
 
 function MuseumArchitecture() {
@@ -408,14 +443,10 @@ function PictureFrame({
   exhibit,
   placement,
   texture,
-  focused,
-  onRead,
 }: {
   exhibit: Exhibit
   placement?: ResolvedHangingPoint
   texture?: THREE.HTMLTexture
-  focused: boolean
-  onRead: (id: ExhibitId) => void
 }) {
   if (!placement) return null
   const { frame, position, rotationY } = placement
@@ -431,17 +462,12 @@ function PictureFrame({
     >
       <mesh castShadow>
         <boxGeometry args={[frame.width, frame.height, frame.depth]} />
-        <meshStandardMaterial color={focused ? '#f2bd78' : frame.material} roughness={0.48} />
+        <meshStandardMaterial color={frame.material} roughness={0.48} />
       </mesh>
       <mesh
         name={`exhibit-surface:${exhibit.id}`}
         position={[0, 0, frame.depth / 2 + 0.012]}
         userData={{ exhibitId: exhibit.id, interactiveExhibitId: exhibit.id }}
-        onClick={(event) => {
-          event.stopPropagation()
-          onRead(exhibit.id)
-        }}
-        onPointerDown={(event) => event.stopPropagation()}
       >
         <planeGeometry args={[innerWidth, innerHeight]} />
         {texture ? (
@@ -458,36 +484,36 @@ function PictureFrame({
         <boxGeometry args={[0.85, 0.06, 0.06]} />
         <meshBasicMaterial color={exhibit.accent} />
       </mesh>
-      {focused && (
-        <mesh raycast={() => undefined} position={[0, 0, frame.depth / 2 + 0.02]}>
-          <planeGeometry args={[innerWidth + 0.08, innerHeight + 0.08]} />
-          <meshBasicMaterial color={exhibit.accent} transparent opacity={0.12} />
-        </mesh>
-      )}
     </group>
   )
 }
 
 function WalkController({
   active,
-  focusedId,
   input,
-  onFocus,
-  onRead,
-  activationRef,
+  githubRectRef,
+  onTarget,
+  onActivate,
 }: {
   active: boolean
-  focusedId: ExhibitId | null
   input: React.MutableRefObject<ControlInput>
-  onFocus: (id: ExhibitId | null) => void
-  onRead: (id: ExhibitId) => void
-  activationRef: React.MutableRefObject<ActivateExhibit>
+  githubRectRef: React.MutableRefObject<NormalizedRect | null>
+  onTarget: (target: CrosshairTarget | null) => void
+  onActivate: (target: CrosshairTarget) => void
 }) {
   const { camera, gl, scene } = useThree()
   const keys = useRef(new Set<string>())
   const yaw = useRef(0)
   const pitch = useRef(-0.03)
-  const scratch = useMemo(() => new THREE.Vector3(), [])
+  const targetRef = useRef<CrosshairTarget | null>(null)
+  const suppressNextClick = useRef(false)
+
+  const updateTarget = useCallback((target: CrosshairTarget | null) => {
+    const current = targetRef.current
+    if (current?.exhibitId === target?.exhibitId && current?.action === target?.action) return
+    targetRef.current = target
+    onTarget(target)
+  }, [onTarget])
 
   useEffect(() => {
     const setKey = (event: KeyboardEvent, pressed: boolean) => {
@@ -497,7 +523,9 @@ function WalkController({
         if (pressed) keys.current.add(key)
         else keys.current.delete(key)
       }
-      if (active && pressed && !event.repeat && key === 'f' && focusedId) onRead(focusedId)
+      if (!pressed) return
+      const target = resolveCrosshairKeyboardTarget(active, key, event.repeat, targetRef.current)
+      if (target) onActivate(target)
     }
     const handleKeyDown = (event: KeyboardEvent) => setKey(event, true)
     const handleKeyUp = (event: KeyboardEvent) => setKey(event, false)
@@ -507,7 +535,7 @@ function WalkController({
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [active, focusedId, onRead])
+  }, [active, onActivate])
 
   useEffect(() => {
     const handlePointerMove = (event: MouseEvent) => {
@@ -516,25 +544,58 @@ function WalkController({
       pitch.current = THREE.MathUtils.clamp(pitch.current - event.movementY * 0.0018, -0.72, 0.58)
     }
     const handlePointerDown = (event: PointerEvent) => {
-      if (active && event.pointerType === 'mouse' && hasFinePointer(window)) {
+      suppressNextClick.current = false
+      const intent = resolveCrosshairPointerIntent({
+        active,
+        pointerType: event.pointerType,
+        button: event.button,
+        finePointer: hasFinePointer(window),
+        pointerLockElement: document.pointerLockElement,
+        canvas: gl.domElement,
+        target: targetRef.current,
+      })
+      if (intent === 'activate' && targetRef.current) {
+        return
+      }
+      if (intent === 'request-pointer-lock') {
+        suppressNextClick.current = true
         void gl.domElement.requestPointerLock()
       }
     }
+    const handleClick = (event: MouseEvent) => {
+      if (suppressNextClick.current) {
+        suppressNextClick.current = false
+        return
+      }
+      const intent = resolveCrosshairPointerIntent({
+        active,
+        pointerType: 'mouse',
+        button: event.button,
+        finePointer: hasFinePointer(window),
+        pointerLockElement: document.pointerLockElement,
+        canvas: gl.domElement,
+        target: targetRef.current,
+      })
+      if (intent === 'activate' && targetRef.current) onActivate(targetRef.current)
+    }
     window.addEventListener('mousemove', handlePointerMove)
     gl.domElement.addEventListener('pointerdown', handlePointerDown)
+    gl.domElement.addEventListener('click', handleClick)
     return () => {
       window.removeEventListener('mousemove', handlePointerMove)
       gl.domElement.removeEventListener('pointerdown', handlePointerDown)
+      gl.domElement.removeEventListener('click', handleClick)
     }
-  }, [active, gl.domElement])
+  }, [active, gl.domElement, onActivate])
 
   useEffect(() => {
     if (!active) {
       keys.current.clear()
       input.current.move = { x: 0, y: 0 }
       input.current.look = { x: 0, y: 0 }
+      updateTarget(null)
     }
-  }, [active, input])
+  }, [active, input, updateTarget])
 
   useFrame((_, delta) => {
     if (!active) return
@@ -560,27 +621,9 @@ function WalkController({
     camera.rotation.order = 'YXZ'
     camera.rotation.y = yaw.current
     camera.rotation.x = pitch.current
-
-    let nearest: ExhibitId | null = null
-    let nearestDistance = Number.POSITIVE_INFINITY
-    for (const exhibit of exhibits) {
-      const placement = resolvedPlacements.get(exhibit.id)
-      if (!placement) continue
-      const distance = scratch.set(...placement.position).distanceTo(camera.position)
-      const frameObject = scene.getObjectByName(`exhibit-frame:${exhibit.id}`)
-      const canFocus = frameObject ? canActivateExhibit(camera, frameObject, scene) : false
-      if (canFocus && distance < nearestDistance) {
-        nearest = exhibit.id
-        nearestDistance = distance
-      }
-    }
-    if (nearest !== focusedId) onFocus(nearest)
-
-    activationRef.current = (id) => {
-      const frameObject = scene.getObjectByName(`exhibit-frame:${id}`)
-      return frameObject ? canActivateExhibit(camera, frameObject, scene) : false
-    }
-   })
+    camera.updateMatrixWorld()
+    updateTarget(getCrosshairTarget(camera, scene, { githubRect: githubRectRef.current }))
+  })
 
   return null
 }
