@@ -21,7 +21,7 @@ import {
   type CrosshairTarget,
   type NormalizedRect,
 } from './interaction'
-import { layoutErrors, museumLayout, resolveAllPlacements, resolveWalkMovement, type ResolvedHangingPoint, type Room, type WallSurface } from './layout'
+import { buildMuseumLayout, getLayoutBounds, resolveAllPlacements, resolveWalkMovement, validateMuseumLayout, type ResolvedHangingPoint, type Room, type WallSurface } from './layout'
 import { calculateMovementDelta } from './movement'
 import { ReadingDialog } from './ReadingDialog'
 import { TouchControls, type ControlInput } from './TouchControls'
@@ -30,7 +30,10 @@ import './style.css'
 type TextureMap = Partial<Record<ExhibitId, THREE.HTMLTexture>>
 
 const initialInput: ControlInput = { move: { x: 0, y: 0 }, look: { x: 0, y: 0 } }
+const museumLayout = buildMuseumLayout(exhibits.map((exhibit) => exhibit.id))
 const resolvedPlacements = resolveAllPlacements(museumLayout)
+const layoutErrors = validateMuseumLayout(museumLayout)
+const spawn = museumLayout.spawn
 
 function App() {
   const [started, setStarted] = useState(false)
@@ -100,12 +103,12 @@ function App() {
         <Canvas
           shadows
           dpr={[1, 2]}
-          camera={{ fov: 56, near: 0.1, far: 100, position: [0, 2.2, 12.5] }}
+          camera={{ fov: 56, near: 0.1, far: 100, position: [...spawn.position] }}
           gl={{ antialias: true, powerPreference: 'high-performance' }}
           tabIndex={0}
           aria-label="Interactive museum scene"
           onCreated={({ camera, gl }) => {
-            camera.lookAt(0, 2.1, 4)
+            camera.lookAt(spawn.position[0], spawn.position[1] - 0.1, spawn.position[2] - 6)
             setHTMLInCanvasSupport(detectNativeHTMLInCanvas(gl.domElement, gl.getContext()))
           }}
         >
@@ -354,28 +357,39 @@ function TextureSource({
 }
 
 function MuseumArchitecture() {
+  const bounds = getLayoutBounds(museumLayout)
+  const groundWidth = bounds.maxX - bounds.minX + 20
+  const groundDepth = bounds.maxZ - bounds.minZ + 20
   return (
     <group>
       {museumLayout.rooms.map((room) => <RoomShell key={room.id} room={room} />)}
       {museumLayout.walls.map((wall) => <WallSurfaceMesh key={wall.id} wall={wall} />)}
-      <mesh position={[0, -0.12, -8]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[48, 54]} />
+      <mesh
+        position={[(bounds.minX + bounds.maxX) / 2, -0.12, (bounds.minZ + bounds.maxZ) / 2]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        receiveShadow
+      >
+        <planeGeometry args={[groundWidth, groundDepth]} />
         <meshStandardMaterial color="#a39d91" roughness={0.96} />
       </mesh>
-      <mesh position={[0, 0.01, -5.2]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[1.5, 42]} />
-        <meshBasicMaterial color="#d17d4e" transparent opacity={0.45} />
-      </mesh>
-      <mesh position={[17, 0.01, -6]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[0.9, 15]} />
-        <meshBasicMaterial color="#d17d4e" transparent opacity={0.28} />
-      </mesh>
-      {[-2, 3.5, 9, 14.5].map((z) => <CeilingLight key={`entrance-light-${z}`} position={[0, 7.15, z]} width={3.2} />)}
-      {[-1, 4.5, 10, 15.5].map((z) => <CeilingLight key={`gallery-light-${z}`} position={[0, 7.55, z - 10]} width={3.8} />)}
-      {[-19, -24, -29].map((z) => <CeilingLight key={`archive-light-${z}`} position={[0, 5.68, z]} width={2.5} />)}
-      <pointLight position={[0, 4.1, 7]} intensity={5} distance={13} color="#ffc785" />
-      <pointLight position={[-7, 3.2, -8]} intensity={3.2} distance={9} color="#f1b275" />
-      <pointLight position={[18, 3.2, -6]} intensity={3.2} distance={10} color="#e9a56d" />
+      {museumLayout.lighting.floorGuides.map((guide, index) => (
+        <mesh key={`guide-${index}`} position={[...guide.position]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[guide.width, guide.depth]} />
+          <meshBasicMaterial color="#d17d4e" transparent opacity={guide.opacity} />
+        </mesh>
+      ))}
+      {museumLayout.lighting.ceiling.map((light, index) => (
+        <CeilingLight key={`ceiling-${index}`} position={[...light.position]} width={light.width} />
+      ))}
+      {museumLayout.lighting.points.map((light, index) => (
+        <pointLight
+          key={`point-${index}`}
+          position={[...light.position]}
+          intensity={light.intensity}
+          distance={light.distance}
+          color={light.color}
+        />
+      ))}
     </group>
   )
 }
@@ -610,6 +624,7 @@ function WalkController({
 
     const movement = calculateMovementDelta(yaw.current, moveX, moveY, 4.4 * delta)
     const [nextX, nextZ] = resolveWalkMovement(
+      museumLayout,
       camera.position.x,
       camera.position.z,
       camera.position.x + movement.x,
@@ -617,7 +632,7 @@ function WalkController({
     )
     camera.position.x = nextX
     camera.position.z = nextZ
-    camera.position.y = 2.2
+    camera.position.y = spawn.position[1]
     camera.rotation.order = 'YXZ'
     camera.rotation.y = yaw.current
     camera.rotation.x = pitch.current

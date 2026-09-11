@@ -64,7 +64,7 @@ export function ExhibitArticle({ exhibit }: { exhibit: Exhibit }): ReactNode {
       {exhibit.id === 'writing' && <WritingArticle />}
       <footer className="article-footer">
         <span>DINOMUSEUM / NIJINZHE</span>
-        <span>{exhibit.order} / 03</span>
+        <span>{exhibit.order} / {String(exhibits.length).padStart(2, '0')}</span>
       </footer>
     </article>
   )

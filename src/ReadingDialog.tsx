@@ -1,5 +1,5 @@
 import { useEffect, useRef, type KeyboardEvent, type RefObject } from 'react'
-import { ExhibitArticle, type Exhibit } from './content'
+import { ExhibitArticle, exhibits, type Exhibit } from './content'
 
 const focusableSelector = [
   'a[href]',
@@ -84,7 +84,7 @@ export function ReadingDialog({
       <div className="reading-backdrop" onPointerDown={onClose} />
       <div className="reading-sheet">
         <div className="reading-toolbar">
-          <span id={titleId}>{exhibit.order} / 03&nbsp;&nbsp; {exhibit.title}</span>
+          <span id={titleId}>{exhibit.order} / {String(exhibits.length).padStart(2, '0')}&nbsp;&nbsp; {exhibit.title}</span>
           <button ref={closeRef} type="button" onClick={onClose}>
             Close <span>Esc</span>
           </button>

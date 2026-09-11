@@ -58,11 +58,33 @@ export type ExhibitPlacement = {
   hangingPointId: string
 }
 
-export type MuseumLayout = {
-  rooms: Room[]
-  walls: WallSurface[]
-  hangingPoints: HangingPoint[]
-  placements: ExhibitPlacement[]
+export type WalkZone = RoomBounds
+
+export type CeilingLightSpec = { position: Vec3; width: number }
+
+export type PointLightSpec = {
+  position: Vec3
+  intensity: number
+  distance: number
+  color: string
+}
+
+export type FloorGuideSpec = {
+  position: Vec3
+  width: number
+  depth: number
+  opacity: number
+}
+
+export type MuseumLighting = {
+  ceiling: CeilingLightSpec[]
+  points: PointLightSpec[]
+  floorGuides: FloorGuideSpec[]
+}
+
+export type MuseumSpawn = {
+  position: Vec3
+  yaw: number
 }
 
 export type ResolvedHangingPoint = HangingPoint & {
@@ -71,118 +93,312 @@ export type ResolvedHangingPoint = HangingPoint & {
   rotationY: number
 }
 
-const plasterStyle: WallStyle = {
-  color: '#d9d3c6',
-  roughness: 0.9,
-  trimColor: '#b8af9e',
-  baseboardColor: '#8f897f',
+export type MuseumLayout = {
+  rooms: Room[]
+  walls: WallSurface[]
+  hangingPoints: HangingPoint[]
+  placements: ExhibitPlacement[]
+  walkZones: WalkZone[]
+  spawn: MuseumSpawn
+  lighting: MuseumLighting
 }
 
-const fadedStyle: WallStyle = {
-  color: '#cfcdbf',
-  roughness: 0.94,
-  trimColor: '#aaa89d',
-  baseboardColor: '#817f78',
+export type RoomPreset = {
+  id: string
+  wallStyle: WallStyle
+  floorColor: string
+  wallColor: string
+  carpetColor: string
 }
 
-const archiveStyle: WallStyle = {
-  color: '#c6c2b4',
-  roughness: 0.96,
-  trimColor: '#99968b',
-  baseboardColor: '#706f6a',
+export type MuseumConfig = {
+  roomWidth: number
+  roomDepth: number
+  wallThickness: number
+  wallHeight: number
+  doorWidth: number
+  framesPerWall: number
+  frameGap: number
+  frameEndMargin: number
+  frame: FrameSpec
+  frameElevation: number
+  minRooms: number
+  eyeHeight: number
+  ceilingBase: number
+  ceilingDecay: number
+  ceilingMin: number
+  cyclePresets: RoomPreset[]
+  terminalPreset: RoomPreset
 }
 
-export const museumLayout: MuseumLayout = {
-  rooms: [
-    {
-      id: 'entrance',
-      name: 'Arrival Hall',
-      bounds: { minX: -8, maxX: 8, minZ: 2, maxZ: 16 },
-      ceilingHeight: 7.4,
-      floorColor: '#b7ae9f',
-      wallColor: '#dcd6c9',
-      carpetColor: '#a29b8f',
-    },
-    {
-      id: 'gallery',
-      name: 'Main Gallery',
-      bounds: { minX: -11, maxX: 11, minZ: -16, maxZ: 4 },
-      ceilingHeight: 7.8,
-      floorColor: '#aaa398',
-      wallColor: '#dad4c8',
-      carpetColor: '#9a9489',
-    },
-    {
-      id: 'side-room',
-      name: 'Side Room',
-      bounds: { minX: 11, maxX: 23, minZ: -14, maxZ: 2 },
-      ceilingHeight: 7.1,
-      floorColor: '#aaa79b',
-      wallColor: '#d1cbbf',
-      carpetColor: '#918f87',
-    },
-    {
-      id: 'archive',
-      name: 'Low Archive',
-      bounds: { minX: -8, maxX: 8, minZ: -33, maxZ: -16 },
-      ceilingHeight: 5.9,
-      floorColor: '#928e84',
-      wallColor: '#c7c2b4',
-      carpetColor: '#7d7972',
-    },
-  ],
-  walls: [
-    // Arrival Hall: open toward the gallery, with two long, calm planes.
-    { id: 'entrance-west', roomId: 'entrance', origin: [-8, 0, 9], tangent: [0, 0, 1], normal: [1, 0, 0], width: 14, height: 5.6, thickness: 0.42, style: plasterStyle },
-    { id: 'entrance-east', roomId: 'entrance', origin: [8, 0, 9], tangent: [0, 0, 1], normal: [-1, 0, 0], width: 14, height: 5.6, thickness: 0.42, style: plasterStyle },
-    { id: 'entrance-north', roomId: 'entrance', origin: [0, 0, 16], tangent: [1, 0, 0], normal: [0, 0, -1], width: 16, height: 5.6, thickness: 0.42, style: fadedStyle },
+const plasterPreset: RoomPreset = {
+  id: 'plaster',
+  wallStyle: { color: '#d9d3c6', roughness: 0.9, trimColor: '#b8af9e', baseboardColor: '#8f897f' },
+  floorColor: '#b7ae9f',
+  wallColor: '#dcd6c9',
+  carpetColor: '#a29b8f',
+}
 
-    // Main Gallery: the east wall is split to leave a generous side-room opening.
-    { id: 'gallery-west', roomId: 'gallery', origin: [-11, 0, -6], tangent: [0, 0, 1], normal: [1, 0, 0], width: 20, height: 5.6, thickness: 0.42, style: plasterStyle },
-    { id: 'gallery-east-north', roomId: 'gallery', origin: [11, 0, 0], tangent: [0, 0, 1], normal: [-1, 0, 0], width: 8, height: 5.6, thickness: 0.42, style: plasterStyle },
-    { id: 'gallery-east-south', roomId: 'gallery', origin: [11, 0, -14], tangent: [0, 0, 1], normal: [-1, 0, 0], width: 4, height: 5.6, thickness: 0.42, style: plasterStyle },
-     { id: 'gallery-back-west', roomId: 'gallery', origin: [-4.7, 0, -16], tangent: [1, 0, 0], normal: [0, 0, 1], width: 4.6, height: 5.6, thickness: 0.42, style: fadedStyle },
-     { id: 'gallery-back-east', roomId: 'gallery', origin: [4.7, 0, -16], tangent: [1, 0, 0], normal: [0, 0, 1], width: 4.6, height: 5.6, thickness: 0.42, style: fadedStyle },
-    { id: 'gallery-island', roomId: 'gallery', origin: [-1, 0, -6], tangent: [0, 0, 1], normal: [1, 0, 0], width: 7, height: 5.2, thickness: 0.38, style: fadedStyle },
+const fadedPreset: RoomPreset = {
+  id: 'faded',
+  wallStyle: { color: '#cfcdbf', roughness: 0.94, trimColor: '#aaa89d', baseboardColor: '#817f78' },
+  floorColor: '#aaa398',
+  wallColor: '#dad4c8',
+  carpetColor: '#9a9489',
+}
 
-    // Side Room: a branch with a different ceiling rhythm and a blind back wall.
-    { id: 'side-east', roomId: 'side-room', origin: [23, 0, -6], tangent: [0, 0, 1], normal: [-1, 0, 0], width: 16, height: 5.4, thickness: 0.42, style: plasterStyle },
-    { id: 'side-north', roomId: 'side-room', origin: [17, 0, 2], tangent: [1, 0, 0], normal: [0, 0, -1], width: 12, height: 5.4, thickness: 0.42, style: fadedStyle },
-    { id: 'side-south', roomId: 'side-room', origin: [17, 0, -14], tangent: [1, 0, 0], normal: [0, 0, 1], width: 12, height: 5.4, thickness: 0.42, style: fadedStyle },
+const archivePreset: RoomPreset = {
+  id: 'archive',
+  wallStyle: { color: '#c6c2b4', roughness: 0.96, trimColor: '#99968b', baseboardColor: '#706f6a' },
+  floorColor: '#928e84',
+  wallColor: '#c7c2b4',
+  carpetColor: '#7d7972',
+}
 
-    // Low Archive: the back room is deliberately compressed and quiet.
-    { id: 'archive-west', roomId: 'archive', origin: [-8, 0, -24.5], tangent: [0, 0, 1], normal: [1, 0, 0], width: 17, height: 4.8, thickness: 0.42, style: archiveStyle },
-    { id: 'archive-east', roomId: 'archive', origin: [8, 0, -24.5], tangent: [0, 0, 1], normal: [-1, 0, 0], width: 17, height: 4.8, thickness: 0.42, style: archiveStyle },
-    { id: 'archive-back', roomId: 'archive', origin: [0, 0, -33], tangent: [1, 0, 0], normal: [0, 0, 1], width: 16, height: 4.8, thickness: 0.42, style: archiveStyle },
-  ],
-  hangingPoints: [
+export const defaultMuseumConfig: MuseumConfig = {
+  roomWidth: 16,
+  roomDepth: 15,
+  wallThickness: 0.42,
+  wallHeight: 5.6,
+  doorWidth: 4.6,
+  framesPerWall: 2,
+  frameGap: 1.2,
+  frameEndMargin: 1,
+  frame: { width: 4.9, height: 3.9, border: 0.2, depth: 0.2, material: '#8f4c32', matColor: '#f5eee0' },
+  frameElevation: 3,
+  minRooms: 2,
+  eyeHeight: 2.2,
+  ceilingBase: 7.8,
+  ceilingDecay: 0.5,
+  ceilingMin: 5.9,
+  cyclePresets: [plasterPreset, fadedPreset],
+  terminalPreset: archivePreset,
+}
+
+function formatOrdinal(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+/**
+ * Builds the whole museum from the ordered exhibit list. Rooms are laid out as an
+ * enfilade along -Z: the first hall opens toward the spawn point, every later hall is
+ * reached through a centered doorway, and the last hall closes with a blind back wall.
+ * Exhibits fill the halls in visiting order, west wall before east wall, entrance side
+ * first. The result is a pure function of the input: same exhibits and config in,
+ * byte-identical layout out.
+ */
+export function buildMuseumLayout(
+  exhibitIds: readonly string[],
+  config: MuseumConfig = defaultMuseumConfig,
+): MuseumLayout {
+  const { roomWidth, roomDepth, wallThickness, wallHeight, doorWidth } = config
+  const halfWidth = roomWidth / 2
+  const framesPerRoom = config.framesPerWall * 2
+  const roomCount = Math.max(config.minRooms, Math.ceil(exhibitIds.length / framesPerRoom))
+
+  const rooms: Room[] = []
+  const roomPresets: RoomPreset[] = []
+  for (let index = 0; index < roomCount; index += 1) {
+    const isTerminal = roomCount > 1 && index === roomCount - 1
+    const preset = isTerminal
+      ? config.terminalPreset
+      : config.cyclePresets[index % config.cyclePresets.length]
+    roomPresets.push(preset)
+    const minZ = -(index + 1) * roomDepth - index * wallThickness
+    rooms.push({
+      id: `hall-${index + 1}`,
+      name: index === 0 ? 'Arrival Hall' : isTerminal ? 'Low Archive' : `Gallery ${formatOrdinal(index + 1)}`,
+      bounds: { minX: -halfWidth, maxX: halfWidth, minZ, maxZ: minZ + roomDepth },
+      ceilingHeight: Math.max(config.ceilingMin, config.ceilingBase - config.ceilingDecay * index),
+      floorColor: preset.floorColor,
+      wallColor: preset.wallColor,
+      carpetColor: preset.carpetColor,
+    })
+  }
+
+  const walls: WallSurface[] = []
+  const sideWallLength = roomDepth + wallThickness
+  for (const [index, room] of rooms.entries()) {
+    const centerZ = (room.bounds.minZ + room.bounds.maxZ) / 2
+    const style = roomPresets[index].wallStyle
+    walls.push({
+      id: `${room.id}-west`,
+      roomId: room.id,
+      origin: [-halfWidth - wallThickness / 2, 0, centerZ],
+      tangent: [0, 0, 1],
+      normal: [1, 0, 0],
+      width: sideWallLength,
+      height: wallHeight,
+      thickness: wallThickness,
+      style,
+    })
+    walls.push({
+      id: `${room.id}-east`,
+      roomId: room.id,
+      origin: [halfWidth + wallThickness / 2, 0, centerZ],
+      tangent: [0, 0, 1],
+      normal: [-1, 0, 0],
+      width: sideWallLength,
+      height: wallHeight,
+      thickness: wallThickness,
+      style,
+    })
+  }
+
+  const gateSegmentWidth = halfWidth + wallThickness - doorWidth / 2
+  if (gateSegmentWidth <= 0) throw new Error('doorWidth leaves no room for gate wall segments')
+  for (let index = 0; index < rooms.length; index += 1) {
+    const room = rooms[index]
+    const isCap = index === rooms.length - 1
+    const style = roomPresets[index].wallStyle
+    // Every room closes at its far end: gate segments with a centered doorway, or a
+    // blind cap wall behind the last hall.
+    const gateZ = room.bounds.minZ - wallThickness / 2
+    if (isCap) {
+      walls.push({
+        id: `${room.id}-cap`,
+        roomId: room.id,
+        origin: [0, 0, gateZ],
+        tangent: [1, 0, 0],
+        normal: [0, 0, 1],
+        width: roomWidth + wallThickness * 2,
+        height: wallHeight,
+        thickness: wallThickness,
+        style,
+      })
+        continue
+      }
+      const gateCenterX = doorWidth / 2 + gateSegmentWidth / 2
+    for (const side of ['west', 'east'] as const) {
+      walls.push({
+        id: `${room.id}-gate-${side}`,
+        roomId: room.id,
+        origin: [side === 'west' ? -gateCenterX : gateCenterX, 0, gateZ],
+        tangent: [1, 0, 0],
+        normal: [0, 0, 1],
+        width: gateSegmentWidth,
+        height: wallHeight,
+        thickness: wallThickness,
+        style,
+      })
+    }
+  }
+
+  const usableWallLength = sideWallLength - config.frameEndMargin * 2
+  const maxFramesPerWall = Math.floor(usableWallLength / (config.frame.width + config.frameGap))
+  if (config.framesPerWall > maxFramesPerWall) {
+    throw new Error(
+      `framesPerWall ${config.framesPerWall} exceeds what a wall can hold (${maxFramesPerWall})`,
+    )
+  }
+
+  const hangingPoints: HangingPoint[] = []
+  const placements: ExhibitPlacement[] = []
+  // Spread exhibits evenly across halls so no trailing hall sits empty; earlier halls
+  // absorb the remainder, matching visiting order.
+  const basePerRoom = Math.floor(exhibitIds.length / roomCount)
+  const remainderRooms = exhibitIds.length % roomCount
+  let exhibitIndex = 0
+  for (const [index, room] of rooms.entries()) {
+    const frameCount = basePerRoom + (index < remainderRooms ? 1 : 0)
+    const westCount = Math.ceil(frameCount / 2)
+    for (const [side, countOnWall] of [
+      ['west', westCount],
+      ['east', frameCount - westCount],
+    ] as const) {
+      for (let slot = 0; slot < countOnWall; slot += 1) {
+        // Slots run from the entrance side toward the far end, matching visiting order.
+        const offset = ((countOnWall - 1 - 2 * slot) * usableWallLength) / (2 * countOnWall)
+        const pointId = `hang-${index + 1}-${side}-${slot + 1}`
+        hangingPoints.push({
+          id: pointId,
+          wallId: `${room.id}-${side}`,
+          offset,
+          elevation: config.frameElevation,
+          frame: config.frame,
+        })
+        const exhibitId = exhibitIds[exhibitIndex]
+        if (exhibitId !== undefined) placements.push({ exhibitId, hangingPointId: pointId })
+        exhibitIndex += 1
+      }
+    }
+  }
+
+  const walkZones: WalkZone[] = []
+  for (let index = 1; index < rooms.length; index += 1) {
+    const gateZ = rooms[index - 1].bounds.minZ - wallThickness / 2
+    walkZones.push({
+      minX: -doorWidth / 2 + 0.2,
+      maxX: doorWidth / 2 - 0.2,
+      minZ: gateZ - 1.6,
+      maxZ: gateZ + 1.6,
+    })
+  }
+
+  const spawnPosition: Vec3 = [0, config.eyeHeight, rooms[0].bounds.maxZ - 3]
+
+  const ceiling: CeilingLightSpec[] = []
+  const points: PointLightSpec[] = []
+  for (const room of rooms) {
+    const lightCount = Math.max(1, Math.round(roomDepth / 5.5))
+    for (let slot = 0; slot < lightCount; slot += 1) {
+      const z = room.bounds.maxZ - ((slot + 0.5) * roomDepth) / lightCount
+      ceiling.push({ position: [0, room.ceilingHeight - 0.25, z], width: 3.2 })
+    }
+    points.push({
+      position: [0, 3.2, (room.bounds.minZ + room.bounds.maxZ) / 2],
+      intensity: 3.2,
+      distance: roomDepth + 4,
+      color: '#f1b275',
+    })
+  }
+  points.unshift({
+    position: [0, 4.1, spawnPosition[2] - 2],
+    intensity: 5,
+    distance: 13,
+    color: '#ffc785',
+  })
+
+  const spineStart = spawnPosition[2] - 1
+  const spineEnd = rooms[rooms.length - 1].bounds.minZ + 2
+  const floorGuides: FloorGuideSpec[] = [
     {
-      id: 'entrance-about',
-      wallId: 'entrance-west',
-      offset: 0,
-      elevation: 3.05,
-      frame: { width: 4.9, height: 3.9, border: 0.2, depth: 0.2, material: '#8f4c32', matColor: '#f5eee0' },
+      position: [0, 0.02, (spineStart + spineEnd) / 2],
+      width: 1.5,
+      depth: spineStart - spineEnd,
+      opacity: 0.45,
     },
-    {
-      id: 'gallery-work',
-      wallId: 'gallery-west',
-      offset: 1.5,
-      elevation: 3.05,
-      frame: { width: 4.9, height: 3.9, border: 0.2, depth: 0.2, material: '#3f6257', matColor: '#f0eee5' },
-    },
-    {
-      id: 'side-writing',
-      wallId: 'side-north',
-      offset: -1.3,
-      elevation: 2.85,
-      frame: { width: 4.9, height: 3.9, border: 0.2, depth: 0.2, material: '#824548', matColor: '#f4ece2' },
-    },
-  ],
-  placements: [
-    { exhibitId: 'about', hangingPointId: 'entrance-about' },
-    { exhibitId: 'work', hangingPointId: 'gallery-work' },
-    { exhibitId: 'writing', hangingPointId: 'side-writing' },
-  ],
+  ]
+  for (const zone of walkZones) {
+    floorGuides.push({
+      position: [0, 0.022, (zone.minZ + zone.maxZ) / 2],
+      width: zone.maxX - zone.minX,
+      depth: 0.9,
+      opacity: 0.28,
+    })
+  }
+
+  return {
+    rooms,
+    walls,
+    hangingPoints,
+    placements,
+    walkZones,
+    spawn: { position: spawnPosition, yaw: 0 },
+    lighting: { ceiling, points, floorGuides },
+  }
+}
+
+export function getLayoutBounds(layout: MuseumLayout): RoomBounds {
+  return layout.rooms.reduce(
+    (bounds, room) => ({
+      minX: Math.min(bounds.minX, room.bounds.minX),
+      maxX: Math.max(bounds.maxX, room.bounds.maxX),
+      minZ: Math.min(bounds.minZ, room.bounds.minZ),
+      maxZ: Math.max(bounds.maxZ, room.bounds.maxZ),
+    }),
+    { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity },
+  )
 }
 
 function vectorLength([x, y, z]: Vec3): number {
@@ -216,6 +432,15 @@ export function resolveHangingPoint(layout: MuseumLayout, pointId: string): Reso
     ],
     rotationY: Math.atan2(wall.normal[0], wall.normal[2]),
   }
+}
+
+function isInsideBounds(bounds: RoomBounds, x: number, z: number, margin = 0): boolean {
+  return (
+    x >= bounds.minX + margin &&
+    x <= bounds.maxX - margin &&
+    z >= bounds.minZ + margin &&
+    z <= bounds.maxZ - margin
+  )
 }
 
 export function validateMuseumLayout(layout: MuseumLayout): string[] {
@@ -258,35 +483,53 @@ export function validateMuseumLayout(layout: MuseumLayout): string[] {
     }
   }
 
+  const placedExhibits = new Set<string>()
   for (const placement of layout.placements) {
     if (!pointIds.has(placement.hangingPointId)) errors.push(`Placement ${placement.exhibitId} references unknown point ${placement.hangingPointId}`)
+    if (placedExhibits.has(placement.exhibitId)) errors.push(`Exhibit ${placement.exhibitId} is placed more than once`)
+    placedExhibits.add(placement.exhibitId)
+  }
+
+  const firstRoom = layout.rooms[0]
+  if (firstRoom && !isInsideBounds(firstRoom.bounds, layout.spawn.position[0], layout.spawn.position[2], 0.5)) {
+    errors.push('Spawn point is outside the first room')
+  }
+
+  for (const [index, light] of layout.lighting.ceiling.entries()) {
+    const room = layout.rooms.find((item) => isInsideBounds(item.bounds, light.position[0], light.position[2]))
+    if (!room) {
+      errors.push(`Ceiling light ${index} is outside every room`)
+    } else if (light.position[1] >= room.ceilingHeight) {
+      errors.push(`Ceiling light ${index} hangs below the ceiling of ${room.id}`)
+    }
+  }
+
+  for (const [index, light] of layout.lighting.points.entries()) {
+    const room = layout.rooms.find((item) => isInsideBounds(item.bounds, light.position[0], light.position[2]))
+    if (!room) errors.push(`Point light ${index} is outside every room`)
   }
 
   return errors
 }
 
-export const layoutErrors = validateMuseumLayout(museumLayout)
-
 export function resolveAllPlacements(layout: MuseumLayout): Map<string, ResolvedHangingPoint> {
   return new Map(layout.placements.map((placement) => [placement.exhibitId, resolveHangingPoint(layout, placement.hangingPointId)]))
 }
 
-type WalkZone = RoomBounds
-
-const walkConnections: WalkZone[] = [
-  { minX: 9.6, maxX: 12.4, minZ: -12.4, maxZ: -4.4 },
-  { minX: -2.2, maxX: 2.2, minZ: -17.5, maxZ: -14.3 },
-]
-
-export function constrainWalkPosition(x: number, z: number, radius = 0.7): [number, number] {
+export function constrainWalkPosition(
+  layout: MuseumLayout,
+  x: number,
+  z: number,
+  radius = 0.7,
+): [number, number] {
   const zones = [
-    ...museumLayout.rooms.map(({ bounds }) => ({
+    ...layout.rooms.map(({ bounds }) => ({
       minX: bounds.minX + radius,
       maxX: bounds.maxX - radius,
       minZ: bounds.minZ + radius,
       maxZ: bounds.maxZ - radius,
     })),
-    ...walkConnections.map((zone) => ({
+    ...layout.walkZones.map((zone) => ({
       minX: zone.minX + radius,
       maxX: zone.maxX - radius,
       minZ: zone.minZ + radius,
@@ -306,16 +549,17 @@ export function constrainWalkPosition(x: number, z: number, radius = 0.7): [numb
 }
 
 export function resolveWalkMovement(
+  layout: MuseumLayout,
   currentX: number,
   currentZ: number,
   nextX: number,
   nextZ: number,
   radius = 0.7,
 ): [number, number] {
-  let [x, z] = constrainWalkPosition(nextX, nextZ, radius)
+  let [x, z] = constrainWalkPosition(layout, nextX, nextZ, radius)
 
   for (let pass = 0; pass < 2; pass += 1) {
-    for (const wall of museumLayout.walls) {
+    for (const wall of layout.walls) {
       const isVertical = Math.abs(wall.tangent[2]) > 0.5
       const line = isVertical ? wall.origin[0] : wall.origin[2]
       const halfLength = wall.width / 2 + radius
@@ -335,5 +579,5 @@ export function resolveWalkMovement(
     }
   }
 
-  return constrainWalkPosition(x, z, radius)
+  return constrainWalkPosition(layout, x, z, radius)
 }

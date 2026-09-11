@@ -18,6 +18,12 @@ npm ci
 npm run dev
 ```
 
+The generated floor plan can be inspected without opening a browser:
+
+```bash
+npm run plan -- 8   # renders museum-plan.png for a museum with 8 exhibits
+```
+
 Wall exhibits use Chromium's experimental native [HTML-in-Canvas API](https://github.com/WICG/html-in-canvas)
 through `THREE.HTMLTexture`. Enable `chrome://flags/#canvas-draw-element` in Chrome before opening
 the site. Detection requires both `HTMLCanvasElement.requestPaint` and the 3- or 6-argument
@@ -49,7 +55,9 @@ npm run preview
 ## Content Model
 
 Exhibits are described by the `exhibits` array in `src/content.tsx`. Each entry owns its label,
-title, metadata, wall location, and an HTML article component. `TextureSource` portals that same
+title, metadata, and an HTML article component; its wall location is not authored anywhere.
+`buildMuseumLayout` assigns halls, walls, and hanging points from the array order, so the floor
+plan always mirrors the content list. `TextureSource` portals that same
 article into an `HTMLTexture` element that Three.js attaches directly to the WebGL canvas. Native
 canvas paint events keep the wall texture current without an intermediate bitmap. Reading mode
 reuses the exact article component as responsive HTML, so the wall and reader cannot drift apart.
@@ -63,6 +71,11 @@ under `prefers-reduced-motion`.
 
 - `src/main.tsx`: React application shell, R3F canvas, scene components, controls, and reading UI.
 - `src/content.tsx`: typed exhibit data and the three complete article bodies.
+- `src/layout.ts`: deterministic museum generator — `buildMuseumLayout` turns the ordered exhibit
+  list into rooms, gate walls with centered doorways, hanging points, placements, walk zones,
+  spawn, and lighting. Nothing about the floor plan is hand-placed; adding an exhibit grows the
+  enfilade by one hall every four works. Same input always produces the identical layout, and
+  `validateMuseumLayout` re-checks every generated wall, hanging point, and light.
 - `src/style.css`: museum UI, responsive reader, and wall article styling.
 - `src/content.test.tsx`: route and content invariants.
 - `src/movement.ts`: camera-local movement math, with yaw and diagonal-normalization coverage.
