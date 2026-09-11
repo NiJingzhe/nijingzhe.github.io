@@ -112,16 +112,16 @@ function App() {
             setHTMLInCanvasSupport(detectNativeHTMLInCanvas(gl.domElement, gl.getContext()))
           }}
         >
-          <color attach="background" args={['#08090a']} />
-          <fog attach="fog" args={['#08090a', 18, 58]} />
-          <ambientLight intensity={0.42} color="#d9e0e1" />
-          <hemisphereLight intensity={0.48} color="#c9d4d8" groundColor="#08090a" />
-          <pointLight position={[0, 5.8, -6]} intensity={1.8} distance={24} color="#b7c5c9" />
+          <color attach="background" args={['#0a0b0d']} />
+          <fog attach="fog" args={['#0a0b0d', 20, 62]} />
+          <ambientLight intensity={0.85} color="#dde4e4" />
+          <hemisphereLight intensity={0.9} color="#dbe3e4" groundColor="#101315" />
+          <pointLight position={[0, 5.8, -6]} intensity={2.6} distance={26} color="#b7c5c9" />
           <directionalLight
             castShadow
             position={[-8, 13, 9]}
-            intensity={1.15}
-            color="#d8e0df"
+            intensity={1.6}
+            color="#dce4e2"
             shadow-mapSize={[1024, 1024]}
           />
           <pointLight position={[0, 5.8, 4]} intensity={1.6} distance={18} color="#cbb27b" />
@@ -371,7 +371,7 @@ function MuseumArchitecture() {
         receiveShadow
       >
         <planeGeometry args={[groundWidth, groundDepth]} />
-        <meshStandardMaterial color="#080a0c" roughness={0.9} />
+        <meshStandardMaterial color="#14181b" roughness={0.82} metalness={0.12} />
       </mesh>
       {museumLayout.lighting.floorGuides.map((guide, index) => (
         <mesh key={`guide-${index}`} position={[...guide.position]} rotation={[-Math.PI / 2, 0, 0]}>
@@ -405,15 +405,15 @@ function RoomShell({ room }: { room: Room }) {
     <group>
       <mesh position={[centerX, -0.1, centerZ]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[width, depth]} />
-        <meshStandardMaterial color={room.floorColor} roughness={0.98} />
+        <meshStandardMaterial color={room.floorColor} roughness={0.62} metalness={0.22} />
       </mesh>
       <mesh position={[centerX, room.ceilingHeight, centerZ]} rotation={[Math.PI / 2, 0, 0]}>
         <planeGeometry args={[width, depth]} />
-        <meshStandardMaterial color="#252a2d" roughness={0.84} />
+        <meshStandardMaterial color="#3d464d" roughness={0.9} />
       </mesh>
       <mesh position={[centerX, 0.015, centerZ]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[width * 0.7, depth * 0.84]} />
-        <meshStandardMaterial color={room.carpetColor} roughness={1} />
+        <meshStandardMaterial color={room.carpetColor} roughness={0.95} metalness={0.05} />
       </mesh>
     </group>
   )
@@ -425,7 +425,7 @@ function WallSurfaceMesh({ wall }: { wall: WallSurface }) {
     <group position={wall.origin} rotation={[0, rotationY, 0]}>
       <mesh position={[0, wall.height / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[wall.width, wall.height, wall.thickness]} />
-        <meshStandardMaterial color={wall.style.color} roughness={wall.style.roughness} />
+        <meshStandardMaterial color={wall.style.color} roughness={wall.style.roughness} metalness={0.08} />
       </mesh>
       <mesh position={[0, 0.24, wall.thickness / 2 + 0.015]}>
         <boxGeometry args={[wall.width - 0.12, 0.18, 0.055]} />
@@ -450,7 +450,7 @@ function CeilingLight({ position, width }: { position: [number, number, number];
         <boxGeometry args={[width, 0.06, 0.55]} />
         <meshStandardMaterial color="#dfe5e3" emissive="#cfdcd9" emissiveIntensity={1.1} />
       </mesh>
-      <pointLight position={[0, -0.15, 0]} intensity={0.9} distance={7} color="#cfd9d7" />
+      <pointLight position={[0, -0.15, 0]} intensity={1.5} distance={9} color="#d3dcd9" />
     </group>
   )
 }

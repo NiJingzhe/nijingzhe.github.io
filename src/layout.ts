@@ -166,26 +166,26 @@ export type MuseumConfig = {
 
 const profilePreset: RoomPreset = {
   id: 'profile',
-  wallStyle: { color: '#252a2d', roughness: 0.78, trimColor: '#8e9b9d', baseboardColor: '#111416' },
-  floorColor: '#101315',
-  wallColor: '#1c2022',
-  carpetColor: '#151a1c',
+  wallStyle: { color: '#414b52', roughness: 0.86, trimColor: '#9fadae', baseboardColor: '#181d20' },
+  floorColor: '#22282c',
+  wallColor: '#333b41',
+  carpetColor: '#2b3236',
 }
 
 const studioPreset: RoomPreset = {
   id: 'studio',
-  wallStyle: { color: '#20262a', roughness: 0.82, trimColor: '#778b91', baseboardColor: '#101315' },
-  floorColor: '#0d1012',
-  wallColor: '#181d20',
-  carpetColor: '#13191b',
+  wallStyle: { color: '#39434a', roughness: 0.88, trimColor: '#8ba0a5', baseboardColor: '#15191c' },
+  floorColor: '#1d2226',
+  wallColor: '#2d353b',
+  carpetColor: '#262d31',
 }
 
 const fieldNotesPreset: RoomPreset = {
   id: 'field-notes',
-  wallStyle: { color: '#171b1e', roughness: 0.88, trimColor: '#68757a', baseboardColor: '#0b0d0e' },
-  floorColor: '#0a0c0e',
-  wallColor: '#121618',
-  carpetColor: '#101416',
+  wallStyle: { color: '#30383e', roughness: 0.9, trimColor: '#7d8b90', baseboardColor: '#121517' },
+  floorColor: '#191d21',
+  wallColor: '#283036',
+  carpetColor: '#21282c',
 }
 
 export const defaultMuseumConfig: MuseumConfig = {
@@ -411,17 +411,17 @@ export function buildMuseumLayout(
       ceiling.push({ position: [0, room.ceilingHeight - 0.25, z], width: 3.2 })
     }
     points.push({
-      position: [0, 3.4, (room.bounds.minZ + room.bounds.maxZ) / 2],
-      intensity: 2.6,
-      distance: roomDepth + 6,
+      position: [0, 4.4, (room.bounds.minZ + room.bounds.maxZ) / 2],
+      intensity: 4.6,
+      distance: roomDepth + 12,
       color: room.categoryAccent,
     })
   }
   points.unshift({
     position: [0, 4.1, spawnPosition[2] - 2],
-    intensity: 3.4,
-    distance: 13,
-    color: '#c9c2ac',
+    intensity: 5.5,
+    distance: 16,
+    color: '#cfc7b0',
   })
 
   const spineStart = spawnPosition[2] - 1
