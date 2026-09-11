@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react'
 
 export type ExhibitId = 'about' | 'work' | 'writing'
+export type ExhibitCategory = string
 
 export type Exhibit = {
   id: ExhibitId
+  category: ExhibitCategory
   order: string
   label: string
   title: string
@@ -15,30 +17,33 @@ export type Exhibit = {
 export const exhibits: Exhibit[] = [
   {
     id: 'about',
+    category: 'profile',
     order: '01',
     label: 'ABOUT / CV',
     title: 'A builder between models and worlds.',
     deck: 'A short CV for a long-running curiosity.',
     meta: 'ZJU 26 / CUHK MSc AI / PHY XIFORMA CEO',
-    accent: '#d17837',
+    accent: '#c5aa72',
   },
   {
     id: 'work',
+    category: 'studio',
     order: '02',
     label: 'WORK / PHY XIFORMA',
     title: 'Serious 3D assets for agentic interfaces.',
     deck: 'Research notes on giving language models a body in space.',
     meta: 'OPEN SOURCE / 2024 - NOW',
-    accent: '#426f63',
+    accent: '#8da5a8',
   },
   {
     id: 'writing',
+    category: 'field-notes',
     order: '03',
     label: 'WRITING / FIELD NOTE 07',
     title: 'The interface is the territory.',
     deck: 'A field note on why tools should feel more like places.',
     meta: 'ESSAY / 08 MIN READ / 2025.06',
-    accent: '#b34a4d',
+    accent: '#9aa4a4',
   },
 ]
 

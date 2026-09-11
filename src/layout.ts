@@ -10,6 +10,10 @@ export type RoomBounds = {
 export type Room = {
   id: string
   name: string
+  category: string
+  categoryLabel: string
+  categoryAccent: string
+  section: number
   bounds: RoomBounds
   ceilingHeight: number
   floorColor: string
@@ -56,6 +60,21 @@ export type HangingPoint = {
 export type ExhibitPlacement = {
   exhibitId: string
   hangingPointId: string
+  category: string
+}
+
+export type ExhibitLayoutInput = {
+  id: string
+  category: string
+}
+
+export type CategoryConfig = {
+  id: string
+  label: string
+  order: number
+  accent: string
+  preset?: RoomPreset
+  capacity?: number
 }
 
 export type WalkZone = RoomBounds
@@ -74,6 +93,16 @@ export type FloorGuideSpec = {
   width: number
   depth: number
   opacity: number
+  color: string
+}
+
+export type MuseumSignage = {
+  id: string
+  roomId: string
+  position: Vec3
+  rotationY: number
+  text: string
+  accent: string
 }
 
 export type MuseumLighting = {
@@ -101,6 +130,7 @@ export type MuseumLayout = {
   walkZones: WalkZone[]
   spawn: MuseumSpawn
   lighting: MuseumLighting
+  signage: MuseumSignage[]
 }
 
 export type RoomPreset = {
@@ -113,6 +143,9 @@ export type RoomPreset = {
 
 export type MuseumConfig = {
   roomWidth: number
+  categories: CategoryConfig[]
+  fallbackCategory: CategoryConfig
+  strictCategories?: boolean
   roomDepth: number
   wallThickness: number
   wallHeight: number
@@ -131,32 +164,39 @@ export type MuseumConfig = {
   terminalPreset: RoomPreset
 }
 
-const plasterPreset: RoomPreset = {
-  id: 'plaster',
-  wallStyle: { color: '#d9d3c6', roughness: 0.9, trimColor: '#b8af9e', baseboardColor: '#8f897f' },
-  floorColor: '#b7ae9f',
-  wallColor: '#dcd6c9',
-  carpetColor: '#a29b8f',
+const profilePreset: RoomPreset = {
+  id: 'profile',
+  wallStyle: { color: '#252a2d', roughness: 0.78, trimColor: '#8e9b9d', baseboardColor: '#111416' },
+  floorColor: '#101315',
+  wallColor: '#1c2022',
+  carpetColor: '#151a1c',
 }
 
-const fadedPreset: RoomPreset = {
-  id: 'faded',
-  wallStyle: { color: '#cfcdbf', roughness: 0.94, trimColor: '#aaa89d', baseboardColor: '#817f78' },
-  floorColor: '#aaa398',
-  wallColor: '#dad4c8',
-  carpetColor: '#9a9489',
+const studioPreset: RoomPreset = {
+  id: 'studio',
+  wallStyle: { color: '#20262a', roughness: 0.82, trimColor: '#778b91', baseboardColor: '#101315' },
+  floorColor: '#0d1012',
+  wallColor: '#181d20',
+  carpetColor: '#13191b',
 }
 
-const archivePreset: RoomPreset = {
-  id: 'archive',
-  wallStyle: { color: '#c6c2b4', roughness: 0.96, trimColor: '#99968b', baseboardColor: '#706f6a' },
-  floorColor: '#928e84',
-  wallColor: '#c7c2b4',
-  carpetColor: '#7d7972',
+const fieldNotesPreset: RoomPreset = {
+  id: 'field-notes',
+  wallStyle: { color: '#171b1e', roughness: 0.88, trimColor: '#68757a', baseboardColor: '#0b0d0e' },
+  floorColor: '#0a0c0e',
+  wallColor: '#121618',
+  carpetColor: '#101416',
 }
 
 export const defaultMuseumConfig: MuseumConfig = {
   roomWidth: 16,
+  categories: [
+    { id: 'profile', label: 'PROFILE', order: 10, accent: '#c5aa72', preset: profilePreset },
+    { id: 'studio', label: 'STUDIO', order: 20, accent: '#8da5a8', preset: studioPreset },
+    { id: 'field-notes', label: 'FIELD NOTES', order: 30, accent: '#a7b0b0', preset: fieldNotesPreset },
+  ],
+  fallbackCategory: { id: 'unclassified', label: 'UNCLASSIFIED', order: 999, accent: '#8b9292', preset: fieldNotesPreset },
+  strictCategories: false,
   roomDepth: 15,
   wallThickness: 0.42,
   wallHeight: 5.6,
@@ -164,15 +204,15 @@ export const defaultMuseumConfig: MuseumConfig = {
   framesPerWall: 2,
   frameGap: 1.2,
   frameEndMargin: 1,
-  frame: { width: 4.9, height: 3.9, border: 0.2, depth: 0.2, material: '#8f4c32', matColor: '#f5eee0' },
+  frame: { width: 4.9, height: 3.9, border: 0.2, depth: 0.2, material: '#23272b', matColor: '#e9e7e0' },
   frameElevation: 3,
   minRooms: 2,
   eyeHeight: 2.2,
   ceilingBase: 7.8,
   ceilingDecay: 0.5,
   ceilingMin: 5.9,
-  cyclePresets: [plasterPreset, fadedPreset],
-  terminalPreset: archivePreset,
+  cyclePresets: [profilePreset, studioPreset],
+  terminalPreset: fieldNotesPreset,
 }
 
 function formatOrdinal(value: number): string {
@@ -188,26 +228,53 @@ function formatOrdinal(value: number): string {
  * byte-identical layout out.
  */
 export function buildMuseumLayout(
-  exhibitIds: readonly string[],
+  exhibits: readonly (string | ExhibitLayoutInput)[],
   config: MuseumConfig = defaultMuseumConfig,
 ): MuseumLayout {
+  const inputs = exhibits.map((item) => typeof item === 'string'
+    ? { id: item, category: config.fallbackCategory.id }
+    : item)
+  if (config.strictCategories) {
+    const known = new Set(config.categories.map((category) => category.id))
+    for (const input of inputs) {
+      if (!known.has(input.category)) throw new Error(`Unknown exhibit category: ${input.category}`)
+    }
+  }
+  const categories = new Map(config.categories.map((category) => [category.id, category]))
+  const resolveCategory = (id: string): CategoryConfig => categories.get(id) ?? config.fallbackCategory
+  const groups = [...new Set(inputs.map((input) => resolveCategory(input.category).id))]
+    .sort((a, b) => resolveCategory(a).order - resolveCategory(b).order)
+    .map((categoryId) => {
+      const category = resolveCategory(categoryId)
+      const items = inputs.filter((input) => resolveCategory(input.category).id === categoryId)
+      const capacity = category.capacity ?? config.framesPerWall * 2
+      return Array.from({ length: Math.max(1, Math.ceil(items.length / capacity)) }, (_, section) => ({
+        category,
+        items: items.slice(section * capacity, (section + 1) * capacity),
+        section: section + 1,
+      }))
+    }).flat()
   const { roomWidth, roomDepth, wallThickness, wallHeight, doorWidth } = config
   const halfWidth = roomWidth / 2
   const framesPerRoom = config.framesPerWall * 2
-  const roomCount = Math.max(config.minRooms, Math.ceil(exhibitIds.length / framesPerRoom))
+  const roomCount = Math.max(config.minRooms, groups.length)
 
   const rooms: Room[] = []
   const roomPresets: RoomPreset[] = []
   for (let index = 0; index < roomCount; index += 1) {
+    const group = groups[index]
     const isTerminal = roomCount > 1 && index === roomCount - 1
-    const preset = isTerminal
-      ? config.terminalPreset
-      : config.cyclePresets[index % config.cyclePresets.length]
+    const preset = group?.category.preset ?? (isTerminal ? config.terminalPreset : config.cyclePresets[index % config.cyclePresets.length])
+    const category = group?.category ?? config.fallbackCategory
     roomPresets.push(preset)
     const minZ = -(index + 1) * roomDepth - index * wallThickness
     rooms.push({
-      id: `hall-${index + 1}`,
-      name: index === 0 ? 'Arrival Hall' : isTerminal ? 'Low Archive' : `Gallery ${formatOrdinal(index + 1)}`,
+      id: `hall-${index + 1}-${category.id}`,
+      name: `${category.label}${group && group.section > 1 ? ` / ${formatOrdinal(group.section)}` : ''}`,
+      category: category.id,
+      categoryLabel: category.label,
+      categoryAccent: category.accent,
+      section: group?.section ?? 1,
       bounds: { minX: -halfWidth, maxX: halfWidth, minZ, maxZ: minZ + roomDepth },
       ceilingHeight: Math.max(config.ceilingMin, config.ceilingBase - config.ceilingDecay * index),
       floorColor: preset.floorColor,
@@ -294,13 +361,11 @@ export function buildMuseumLayout(
 
   const hangingPoints: HangingPoint[] = []
   const placements: ExhibitPlacement[] = []
-  // Spread exhibits evenly across halls so no trailing hall sits empty; earlier halls
-  // absorb the remainder, matching visiting order.
-  const basePerRoom = Math.floor(exhibitIds.length / roomCount)
-  const remainderRooms = exhibitIds.length % roomCount
   let exhibitIndex = 0
   for (const [index, room] of rooms.entries()) {
-    const frameCount = basePerRoom + (index < remainderRooms ? 1 : 0)
+    const group = groups[index]
+    const frameCount = group?.items.length ?? (index === 0 ? Math.min(inputs.length, framesPerRoom) : 0)
+    const groupStart = groups.slice(0, index).reduce((sum, item) => sum + item.items.length, 0)
     const westCount = Math.ceil(frameCount / 2)
     for (const [side, countOnWall] of [
       ['west', westCount],
@@ -317,8 +382,8 @@ export function buildMuseumLayout(
           elevation: config.frameElevation,
           frame: config.frame,
         })
-        const exhibitId = exhibitIds[exhibitIndex]
-        if (exhibitId !== undefined) placements.push({ exhibitId, hangingPointId: pointId })
+        const input = group?.items[exhibitIndex - groupStart]
+        if (input) placements.push({ exhibitId: input.id, hangingPointId: pointId, category: input.category })
         exhibitIndex += 1
       }
     }
@@ -346,17 +411,17 @@ export function buildMuseumLayout(
       ceiling.push({ position: [0, room.ceilingHeight - 0.25, z], width: 3.2 })
     }
     points.push({
-      position: [0, 3.2, (room.bounds.minZ + room.bounds.maxZ) / 2],
-      intensity: 3.2,
-      distance: roomDepth + 4,
-      color: '#f1b275',
+      position: [0, 3.4, (room.bounds.minZ + room.bounds.maxZ) / 2],
+      intensity: 2.6,
+      distance: roomDepth + 6,
+      color: room.categoryAccent,
     })
   }
   points.unshift({
     position: [0, 4.1, spawnPosition[2] - 2],
-    intensity: 5,
+    intensity: 3.4,
     distance: 13,
-    color: '#ffc785',
+    color: '#c9c2ac',
   })
 
   const spineStart = spawnPosition[2] - 1
@@ -364,19 +429,43 @@ export function buildMuseumLayout(
   const floorGuides: FloorGuideSpec[] = [
     {
       position: [0, 0.02, (spineStart + spineEnd) / 2],
-      width: 1.5,
+      width: 1.1,
       depth: spineStart - spineEnd,
-      opacity: 0.45,
+      opacity: 0.3,
+      color: '#828c8b',
     },
   ]
-  for (const zone of walkZones) {
+  for (let index = 1; index < rooms.length; index += 1) {
+    const zone = walkZones[index - 1]
     floorGuides.push({
       position: [0, 0.022, (zone.minZ + zone.maxZ) / 2],
       width: zone.maxX - zone.minX,
-      depth: 0.9,
-      opacity: 0.28,
+      depth: 1.1,
+      opacity: 0.5,
+      color: rooms[index].categoryAccent,
     })
   }
+
+  const signage: MuseumSignage[] = []
+  for (let index = 0; index < rooms.length - 1; index += 1) {
+    const next = rooms[index + 1]
+    signage.push({
+      id: `sign-${index + 1}`,
+      roomId: next.id,
+      position: [0, wallHeight - 0.85, rooms[index].bounds.minZ],
+      rotationY: 0,
+      text: next.name,
+      accent: next.categoryAccent,
+    })
+  }
+  signage.push({
+    id: 'sign-fin',
+    roomId: rooms[rooms.length - 1].id,
+    position: [0, wallHeight - 0.85, rooms[rooms.length - 1].bounds.minZ],
+    rotationY: 0,
+    text: 'FIN',
+    accent: '#c9c2ac',
+  })
 
   return {
     rooms,
@@ -386,6 +475,7 @@ export function buildMuseumLayout(
     walkZones,
     spawn: { position: spawnPosition, yaw: 0 },
     lighting: { ceiling, points, floorGuides },
+    signage,
   }
 }
 

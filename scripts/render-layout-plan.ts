@@ -12,15 +12,23 @@ import { writeFileSync } from 'node:fs'
 import { deflateSync } from 'node:zlib'
 import {
   buildMuseumLayout,
+  defaultMuseumConfig,
   getLayoutBounds,
   resolveHangingPoint,
+  type ExhibitLayoutInput,
 } from '../src/layout'
 
 const countArg = Number(process.argv[2])
 const exhibitCount = Number.isFinite(countArg) && countArg > 0 ? Math.floor(countArg) : 3
-const exhibitIds = Array.from({ length: exhibitCount }, (_, index) => `exhibit-${index + 1}`)
-const layout = buildMuseumLayout(exhibitIds)
+const categories = defaultMuseumConfig.categories
+const inputs: ExhibitLayoutInput[] = Array.from({ length: exhibitCount }, (_, index) => ({
+  id: `exhibit-${index + 1}`,
+  category: categories[index % categories.length].id,
+}))
+const layout = buildMuseumLayout(inputs)
 const bounds = getLayoutBounds(layout)
+
+const roomAccentById = new Map(layout.rooms.map((room) => [room.id, room.categoryAccent]))
 
 const scale = 30 // pixels per meter
 const margin = 3
@@ -65,7 +73,7 @@ for (const zone of layout.walkZones) {
 }
 for (const guide of layout.lighting.floorGuides) {
   const [gx, , gz] = guide.position
-  fillRect(gx - guide.width / 2, gz - guide.depth / 2, gx + guide.width / 2, gz + guide.depth / 2, hexToRgb('#d17d4e'), 160)
+  fillRect(gx - guide.width / 2, gz - guide.depth / 2, gx + guide.width / 2, gz + guide.depth / 2, hexToRgb(guide.color), Math.round(guide.opacity * 255))
 }
 for (const wall of layout.walls) {
   const horizontal = Math.abs(wall.tangent[0]) > 0.5
@@ -90,7 +98,7 @@ for (const point of layout.hangingPoints) {
     pz - (horizontal ? 0.35 : halfWidth),
     px + (horizontal ? halfWidth : 0.35),
     pz + (horizontal ? 0.35 : halfWidth),
-    hexToRgb('#c2552f'),
+    hexToRgb(roomAccentById.get(resolved.wall.roomId) ?? '#c5aa72'),
   )
 }
 {
@@ -138,7 +146,7 @@ const png = Buffer.concat([
 writeFileSync(`${process.cwd()}/museum-plan.png`, png)
 
 console.log(`exhibits: ${exhibitCount}`)
-console.log(`halls: ${layout.rooms.length} -> ${layout.rooms.map((room) => room.name).join(', ')}`)
-console.log(`walls: ${layout.walls.length}, frames: ${layout.hangingPoints.length}, gates: ${layout.walkZones.length}`)
+console.log(`halls: ${layout.rooms.length} -> ${layout.rooms.map((room) => `${room.name}(${room.category})`).join(', ')}`)
+console.log(`walls: ${layout.walls.length}, frames: ${layout.hangingPoints.length}, gates: ${layout.walkZones.length}, signs: ${layout.signage.length}`)
 console.log(`spawn: ${layout.spawn.position.join(', ')}`)
 console.log(`wrote museum-plan.png (${width}x${height})`)

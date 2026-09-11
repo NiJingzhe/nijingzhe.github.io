@@ -1,17 +1,24 @@
 import { describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ExhibitArticle, exhibits, getExhibit } from './content'
-import { buildMuseumLayout, resolveAllPlacements } from './layout'
+import { buildMuseumLayout, defaultMuseumConfig, resolveAllPlacements } from './layout'
 
 describe('museum content', () => {
   it('contains a complete three-stop route', () => {
     expect(exhibits).toHaveLength(3)
     expect(exhibits.map((exhibit) => exhibit.id)).toEqual(['about', 'work', 'writing'])
-    const museumLayout = buildMuseumLayout(exhibits.map((exhibit) => exhibit.id))
+    const museumLayout = buildMuseumLayout(exhibits.map(({ id, category }) => ({ id, category })))
     const placements = resolveAllPlacements(museumLayout)
     expect(new Set(exhibits.map((exhibit) => placements.get(exhibit.id)?.wall.id))).toEqual(
-      new Set(['hall-1-west', 'hall-1-east', 'hall-2-west']),
+      new Set(['hall-1-profile-west', 'hall-2-studio-west', 'hall-3-field-notes-west']),
     )
+  })
+
+  it('declares an extensible category for every exhibit', () => {
+    const known = new Set(defaultMuseumConfig.categories.map((category) => category.id))
+    for (const exhibit of exhibits) {
+      expect(known.has(exhibit.category)).toBe(true)
+    }
   })
 
   it('returns a known exhibit and rejects invalid identifiers', () => {

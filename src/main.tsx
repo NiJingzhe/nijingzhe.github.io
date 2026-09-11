@@ -1,5 +1,5 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { createRoot } from 'react-dom/client'
 import * as THREE from 'three'
@@ -21,7 +21,7 @@ import {
   type CrosshairTarget,
   type NormalizedRect,
 } from './interaction'
-import { buildMuseumLayout, getLayoutBounds, resolveAllPlacements, resolveWalkMovement, validateMuseumLayout, type ResolvedHangingPoint, type Room, type WallSurface } from './layout'
+import { buildMuseumLayout, getLayoutBounds, resolveAllPlacements, resolveWalkMovement, validateMuseumLayout, type MuseumSignage, type ResolvedHangingPoint, type Room, type WallSurface } from './layout'
 import { calculateMovementDelta } from './movement'
 import { ReadingDialog } from './ReadingDialog'
 import { TouchControls, type ControlInput } from './TouchControls'
@@ -30,7 +30,7 @@ import './style.css'
 type TextureMap = Partial<Record<ExhibitId, THREE.HTMLTexture>>
 
 const initialInput: ControlInput = { move: { x: 0, y: 0 }, look: { x: 0, y: 0 } }
-const museumLayout = buildMuseumLayout(exhibits.map((exhibit) => exhibit.id))
+const museumLayout = buildMuseumLayout(exhibits.map(({ id, category }) => ({ id, category })))
 const resolvedPlacements = resolveAllPlacements(museumLayout)
 const layoutErrors = validateMuseumLayout(museumLayout)
 const spawn = museumLayout.spawn
@@ -112,18 +112,19 @@ function App() {
             setHTMLInCanvasSupport(detectNativeHTMLInCanvas(gl.domElement, gl.getContext()))
           }}
         >
-          <color attach="background" args={['#ede9df']} />
-          <fog attach="fog" args={['#ede9df', 25, 72]} />
-          <ambientLight intensity={1.5} color="#fffaf0" />
-          <hemisphereLight intensity={1.4} color="#fff8e8" groundColor="#b5aa98" />
+          <color attach="background" args={['#08090a']} />
+          <fog attach="fog" args={['#08090a', 18, 58]} />
+          <ambientLight intensity={0.42} color="#d9e0e1" />
+          <hemisphereLight intensity={0.48} color="#c9d4d8" groundColor="#08090a" />
+          <pointLight position={[0, 5.8, -6]} intensity={1.8} distance={24} color="#b7c5c9" />
           <directionalLight
             castShadow
             position={[-8, 13, 9]}
-            intensity={3.2}
-            color="#fff4d5"
+            intensity={1.15}
+            color="#d8e0df"
             shadow-mapSize={[1024, 1024]}
           />
-          <pointLight position={[0, 6.2, 4]} intensity={4.5} distance={20} color="#f4b26d" />
+          <pointLight position={[0, 5.8, 4]} intensity={1.6} distance={18} color="#cbb27b" />
           <MuseumArchitecture />
           {exhibits.map((exhibit) => (
             <PictureFrame
@@ -370,14 +371,15 @@ function MuseumArchitecture() {
         receiveShadow
       >
         <planeGeometry args={[groundWidth, groundDepth]} />
-        <meshStandardMaterial color="#a39d91" roughness={0.96} />
+        <meshStandardMaterial color="#080a0c" roughness={0.9} />
       </mesh>
       {museumLayout.lighting.floorGuides.map((guide, index) => (
         <mesh key={`guide-${index}`} position={[...guide.position]} rotation={[-Math.PI / 2, 0, 0]}>
           <planeGeometry args={[guide.width, guide.depth]} />
-          <meshBasicMaterial color="#d17d4e" transparent opacity={guide.opacity} />
+          <meshBasicMaterial color={guide.color} transparent opacity={guide.opacity} />
         </mesh>
       ))}
+      {museumLayout.signage.map((sign) => <RoomSignage key={sign.id} sign={sign} />)}
       {museumLayout.lighting.ceiling.map((light, index) => (
         <CeilingLight key={`ceiling-${index}`} position={[...light.position]} width={light.width} />
       ))}
@@ -407,7 +409,7 @@ function RoomShell({ room }: { room: Room }) {
       </mesh>
       <mesh position={[centerX, room.ceilingHeight, centerZ]} rotation={[Math.PI / 2, 0, 0]}>
         <planeGeometry args={[width, depth]} />
-        <meshStandardMaterial color="#e7e2d6" roughness={0.93} />
+        <meshStandardMaterial color="#252a2d" roughness={0.84} />
       </mesh>
       <mesh position={[centerX, 0.015, centerZ]} rotation={[-Math.PI / 2, 0, 0]}>
         <planeGeometry args={[width * 0.7, depth * 0.84]} />
@@ -435,7 +437,7 @@ function WallSurfaceMesh({ wall }: { wall: WallSurface }) {
       </mesh>
       <mesh position={[0, wall.height * 0.56, wall.thickness / 2 + 0.03]}>
         <boxGeometry args={[wall.width * 0.72, 0.025, 0.025]} />
-        <meshBasicMaterial color="#d38b54" transparent opacity={0.42} />
+        <meshBasicMaterial color={wall.style.trimColor} transparent opacity={0.34} />
       </mesh>
     </group>
   )
@@ -446,10 +448,44 @@ function CeilingLight({ position, width }: { position: [number, number, number];
     <group position={position}>
       <mesh>
         <boxGeometry args={[width, 0.06, 0.55]} />
-        <meshStandardMaterial color="#f4f0df" emissive="#fff0bd" emissiveIntensity={1.4} />
+        <meshStandardMaterial color="#dfe5e3" emissive="#cfdcd9" emissiveIntensity={1.1} />
       </mesh>
-      <pointLight position={[0, -0.15, 0]} intensity={1.1} distance={7} color="#ffe2a8" />
+      <pointLight position={[0, -0.15, 0]} intensity={0.9} distance={7} color="#cfd9d7" />
     </group>
+  )
+}
+
+function RoomSignage({ sign }: { sign: MuseumSignage }) {
+  const texture = useMemo(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 512
+    canvas.height = 128
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.fillStyle = '#0c0e10'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.strokeStyle = '#2a3134'
+    ctx.lineWidth = 3
+    ctx.strokeRect(6, 6, canvas.width - 12, canvas.height - 12)
+    ctx.fillStyle = '#e6e9e4'
+    ctx.font = '500 46px "DM Mono", monospace'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(sign.text, canvas.width / 2, canvas.height / 2 - 8, canvas.width - 60)
+    ctx.fillStyle = sign.accent
+    ctx.fillRect(canvas.width / 2 - 40, canvas.height - 30, 80, 5)
+    const tex = new THREE.CanvasTexture(canvas)
+    tex.colorSpace = THREE.SRGBColorSpace
+    return tex
+  }, [sign])
+
+  useEffect(() => () => texture?.dispose(), [texture])
+  if (!texture) return null
+  return (
+    <mesh position={[...sign.position]} rotation={[0, sign.rotationY, 0]}>
+      <planeGeometry args={[2.7, 0.68]} />
+      <meshBasicMaterial map={texture} toneMapped={false} transparent />
+    </mesh>
   )
 }
 

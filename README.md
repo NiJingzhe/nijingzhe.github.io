@@ -55,9 +55,16 @@ npm run preview
 ## Content Model
 
 Exhibits are described by the `exhibits` array in `src/content.tsx`. Each entry owns its label,
-title, metadata, and an HTML article component; its wall location is not authored anywhere.
-`buildMuseumLayout` assigns halls, walls, and hanging points from the array order, so the floor
-plan always mirrors the content list. `TextureSource` portals that same
+title, metadata, a `category`, and an HTML article component. Categories are open-ended strings
+resolved against the registry in `defaultMuseumConfig` (`categories` + `fallbackCategory`): a
+registered category provides its display label, ordering, signal accent, wall preset, and optional
+per-hall capacity, so new content either joins an existing gallery or defines a new one without
+touching layout code. `buildMuseumLayout` groups exhibits by category (stable inside each group,
+splitting into numbered continuation halls past capacity) and derives every room, wall, hanging
+point, walk zone, light, guide, and sign from that data. The look is deliberately dark
+retro-futurism: graphite rooms on near-black, pale exhibit surfaces, dark metal frames, cool-white
+light pools, and one muted metallic accent per category used only for orientation. `TextureSource`
+portals each
 article into an `HTMLTexture` element that Three.js attaches directly to the WebGL canvas. Native
 canvas paint events keep the wall texture current without an intermediate bitmap. Reading mode
 reuses the exact article component as responsive HTML, so the wall and reader cannot drift apart.
